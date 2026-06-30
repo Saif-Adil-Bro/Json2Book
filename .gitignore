@@ -1,0 +1,92 @@
+# ============================================================
+#  .gitignore — Android Studio + Kotlin + Gradle project
+# ============================================================
+
+# ── Gradle ───────────────────────────────────────────────────
+.gradle/
+build/
+**/build/
+!gradle-wrapper.jar       # wrapper jar MUST be committed
+
+# Gradle local properties (never commit — contains SDK path)
+local.properties
+
+# Configuration cache (machine-specific)
+.gradle/configuration-cache/
+
+# ── Android Studio / IntelliJ IDEA ──────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+captures/
+.DS_Store
+
+# Don't ignore these IntelliJ files — useful for team settings
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+!.idea/copyright/
+!.idea/dictionaries/
+!.idea/vcs.xml
+!.idea/gradle.xml
+!.idea/misc.xml
+!.idea/compiler.xml
+
+# ── APKs / AABs / Mapping files ──────────────────────────────
+*.apk
+*.aab
+*.ap_
+
+# Proguard / R8 mapping (auto-generated)
+mapping.txt
+seeds.txt
+usage.txt
+
+# ── Test results & coverage ──────────────────────────────────
+**/test-results/
+**/reports/
+**/jacoco/
+**/coverage/
+
+# ── NDK / C++ ────────────────────────────────────────────────
+obj/
+*.so
+*.o
+*.a
+
+# ── Signing keys (NEVER commit keystores!) ───────────────────
+*.jks
+*.keystore
+key.properties
+signing.properties
+
+# ── OS-generated files ───────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── Lint ─────────────────────────────────────────────────────
+lint-baseline.xml
+
+# ── Firebase / Google Services ───────────────────────────────
+google-services.json
+
+# ── Environment & CI secrets ─────────────────────────────────
+.env
+.env.local
+*.secret
+secrets.properties
+
+# ── DataStore / local databases ──────────────────────────────
+*.db
+*.realm
+
+# ── Kotlin / Compose compiler metrics (local dev only) ───────
+**/compose_compiler/
+**/compose_metrics/

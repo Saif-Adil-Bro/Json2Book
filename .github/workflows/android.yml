@@ -1,0 +1,93 @@
+name: Android CI — Build Debug APK
+
+# ── Triggers ────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+# ── Permissions ──────────────────────────────────────────────────────────────
+permissions:
+  contents: read
+  actions: write          # required to upload artifacts
+
+# ── Jobs ─────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout source code
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Set up JDK 17 (matches compileOptions in build.gradle.kts)
+      - name: ☕ Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"   # Eclipse Temurin — fast & reliable on GH runners
+          cache: gradle             # built-in Gradle dependency caching
+
+      # 3. Cache Gradle wrapper & build outputs for faster subsequent runs
+      - name: 📦 Cache Gradle files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 4. Make Gradle wrapper executable
+      - name: 🔐 Grant execute permission to Gradle wrapper
+        run: chmod +x gradlew
+
+      # 5. Run lint check (non-blocking — report is uploaded as artifact)
+      - name: 🔍 Run Lint
+        run: ./gradlew lintDebug --stacktrace
+        continue-on-error: true
+
+      # 6. Upload lint report
+      - name: 📋 Upload Lint Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          retention-days: 7
+
+      # 7. Build the debug APK
+      - name: 🏗️ Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # 8. Upload the APK so it can be downloaded from the Actions run summary
+      - name: 📤 Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DynamicBookReader-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30        # keep for 30 days
+
+      # 9. Print build summary
+      - name: ✅ Build summary
+        run: |
+          echo "### ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📦 APK artifact: **DynamicBookReader-debug-${{ github.run_number }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download from the **Artifacts** section above ⬆️" >> $GITHUB_STEP_SUMMARY
+          APK_SIZE=$(du -sh app/build/outputs/apk/debug/app-debug.apk | cut -f1)
+          echo "**APK Size:** $APK_SIZE" >> $GITHUB_STEP_SUMMARY
