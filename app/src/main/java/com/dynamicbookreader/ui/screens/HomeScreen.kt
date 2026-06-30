@@ -28,13 +28,12 @@ import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.viewmodel.BookUiState
 import com.dynamicbookreader.viewmodel.BookViewModel
-import kotlinx.coroutines.delay
 
 /**
  * Home / Chapter List screen.
  *
  * - Shows book title from JSON at the top (in a hero banner).
- * - Staggered animated list of chapter cards.
+ * - Lazily-loaded, performant list of chapter cards.
  * - Error state with retry button.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,14 +76,13 @@ fun HomeScreen(
                             SectionHeader(chapterCount = bookData.chapters.size)
                         }
 
-                        // ── Chapter Cards (staggered animation) ──────────────
+                        // ── Chapter Cards ─────────────────────────────────────
                         itemsIndexed(
                             items = bookData.chapters,
                             key = { _, chapter -> chapter.chapterNo }
-                        ) { index, chapter ->
-                            StaggeredChapterCard(
+                        ) { _, chapter ->
+                            ChapterCard(
                                 chapter = chapter,
-                                index = index,
                                 onClick = {
                                     viewModel.selectChapter(chapter)
                                     onChapterClick(chapter)
@@ -198,35 +196,16 @@ private fun SectionHeader(chapterCount: Int) {
     }
 }
 
-// ── Staggered Chapter Card ────────────────────────────────────────────────────
-
-@Composable
-private fun StaggeredChapterCard(
-    chapter: Chapter,
-    index: Int,
-    onClick: () -> Unit
-) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(index * 60L)
-        visible = true
-    }
-
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(300)) + slideInVertically(
-            animationSpec = tween(300, easing = EaseOutCubic),
-            initialOffsetY = { it / 3 }
-        )
-    ) {
-        ChapterCard(chapter = chapter, onClick = onClick)
-    }
-}
-
 // ── Chapter Card ──────────────────────────────────────────────────────────────
 
 @Composable
 private fun ChapterCard(chapter: Chapter, onClick: () -> Unit) {
+    // Cache the preview substring once per chapter — avoids recomputing
+    // String.take()/trim() on every recomposition while scrolling.
+    val previewText = remember(chapter.chapterNo) {
+        chapter.content.take(80).trim() + "…"
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -276,9 +255,9 @@ private fun ChapterCard(chapter: Chapter, onClick: () -> Unit) {
 
                 Spacer(Modifier.height(4.dp))
 
-                // Content preview
+                // Content preview (precomputed above)
                 Text(
-                    text = chapter.content.take(80).trim() + "…",
+                    text = previewText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
