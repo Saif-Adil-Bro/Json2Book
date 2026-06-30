@@ -33,30 +33,38 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"   # Eclipse Temurin — fast & reliable on GH runners
-          cache: gradle             # built-in Gradle dependency caching
 
-      # 3. Cache Gradle wrapper & build outputs for faster subsequent runs
-      - name: 📦 Cache Gradle files
-        uses: actions/cache@v4
+      # 3. Set up Gradle (also provisions a real `gradle` binary on PATH,
+      #    used below to (re)generate the wrapper if it's missing/incomplete,
+      #    and provides built-in dependency + wrapper caching)
+      - name: 🐘 Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          gradle-version: "8.9"
+          cache-read-only: false
 
-      # 4. Make Gradle wrapper executable
+      # 4. Ensure the Gradle wrapper exists (gradlew + gradle-wrapper.jar).
+      #    If the repo doesn't have a working wrapper committed, this
+      #    regenerates it using the Gradle binary provisioned above.
+      - name: 🔧 Generate / verify Gradle wrapper
+        run: |
+          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "Wrapper missing or incomplete — generating with gradle 8.9"
+            gradle wrapper --gradle-version 8.9 --distribution-type bin
+          else
+            echo "Wrapper already present"
+          fi
+
+      # 5. Make Gradle wrapper executable
       - name: 🔐 Grant execute permission to Gradle wrapper
         run: chmod +x gradlew
 
-      # 5. Run lint check (non-blocking — report is uploaded as artifact)
+      # 6. Run lint check (non-blocking — report is uploaded as artifact)
       - name: 🔍 Run Lint
         run: ./gradlew lintDebug --stacktrace
         continue-on-error: true
 
-      # 6. Upload lint report
+      # 7. Upload lint report
       - name: 📋 Upload Lint Report
         uses: actions/upload-artifact@v4
         if: always()
@@ -65,11 +73,11 @@ jobs:
           path: app/build/reports/lint-results-debug.html
           retention-days: 7
 
-      # 7. Build the debug APK
+      # 8. Build the debug APK
       - name: 🏗️ Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      # 8. Upload the APK so it can be downloaded from the Actions run summary
+      # 9. Upload the APK so it can be downloaded from the Actions run summary
       - name: 📤 Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -77,7 +85,7 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30        # keep for 30 days
 
-      # 9. Print build summary
+      # 10. Print build summary
       - name: ✅ Build summary
         run: |
           echo "### ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
