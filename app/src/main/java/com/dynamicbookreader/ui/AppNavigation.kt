@@ -69,6 +69,11 @@ fun AppNavigation(
                         navController.navigate(
                             Screen.Reading.createRoute(chapter.chapterNo)
                         )
+                    },
+                    onContinueReadingClick = { chapterNo ->
+                        navController.navigate(
+                            Screen.Reading.createRoute(chapterNo)
+                        )
                     }
                 )
             }
@@ -81,8 +86,10 @@ fun AppNavigation(
                         type = androidx.navigation.NavType.IntType
                     }
                 )
-            ) {
+            ) { backStackEntry ->
+                val chapterNo = backStackEntry.arguments?.getInt("chapterNo") ?: 1
                 ReadingScreen(
+                    chapterNo = chapterNo,
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() }
                 )

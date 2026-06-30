@@ -13,48 +13,251 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.ParagraphStyle
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.viewmodel.BookViewModel
+import com.dynamicbookreader.viewmodel.ChapterUiState
+import kotlinx.coroutines.launch
 
 /**
  * Distraction-free reading screen.
  *
  * Features:
+ * – Loads the requested chapter via [BookViewModel.openChapter] and reacts
+ *   to Loading / Success / Error states (cache makes this near-instant in
+ *   the common case, but the states still cover cold-start / failure).
  * – Tap anywhere to show/hide controls (immersive reading).
  * – Font size A+/A− with live preview.
  * – Line height +/− adjustment.
  * – Day / Night / Sepia theme toggle.
- * – Smooth vertical scroll.
- * – All settings persist across sessions via DataStore.
+ * – Smooth vertical scroll with a live progress bar.
+ * – Reading position is saved (debounced) as the user scrolls, and a
+ *   "resume" floating button jumps back to the last saved position.
+ * – All settings + progress persist across sessions via DataStore.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadingScreen(
+    chapterNo: Int,
     viewModel: BookViewModel,
     onBack: () -> Unit
 ) {
-    val chapter by viewModel.selectedChapter.collectAsState()
+    val chapterState by viewModel.chapterUiState.collectAsState()
     val fontSize by viewModel.fontSize.collectAsState()
     val lineHeight by viewModel.lineHeight.collectAsState()
     val readingTheme by viewModel.readingTheme.collectAsState()
+    val readingProgress by viewModel.readingProgress.collectAsState()
 
+    // Trigger the chapter load once when this screen is shown for this chapterNo.
+    LaunchedEffect(chapterNo) {
+        viewModel.openChapter(chapterNo)
+    }
+
+    // Clean up debounce job / reset state when leaving the screen.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.clearChapterState() }
+    }
+
+    when (val state = chapterState) {
+        is ChapterUiState.Idle, is ChapterUiState.Loading -> {
+            ReadingLoadingState(onBack = onBack)
+        }
+
+        is ChapterUiState.Error -> {
+            ReadingErrorState(
+                message = state.message,
+                onRetry = { viewModel.retryOpenChapter(chapterNo) },
+                onBack = onBack
+            )
+        }
+
+        is ChapterUiState.Success -> {
+            ReadingContent(
+                chapter = state.chapter,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                readingTheme = readingTheme,
+                // Only offer "resume" if the saved progress belongs to THIS chapter
+                // (otherwise it's stale progress from a different chapter).
+                savedScrollFraction = readingProgress
+                    .takeIf { it.chapterNo == chapterNo }
+                    ?.scrollFraction,
+                onScrollProgressChanged = { fraction ->
+                    viewModel.updateReadingProgress(chapterNo, state.chapter.title, fraction)
+                },
+                onLeaveScreen = { fraction ->
+                    viewModel.saveReadingProgressNow(chapterNo, state.chapter.title, fraction)
+                },
+                onFontIncrease = { viewModel.increaseFontSize() },
+                onFontDecrease = { viewModel.decreaseFontSize() },
+                onLineHeightIncrease = { viewModel.increaseLineHeight() },
+                onLineHeightDecrease = { viewModel.decreaseLineHeight() },
+                onThemeChange = { viewModel.setReadingTheme(it) },
+                onBack = onBack
+            )
+        }
+    }
+}
+
+// ── Loading state ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun ReadingLoadingState(onBack: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.Default.ArrowBack,
+                    contentDescription = "ফিরে যান",
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp),
+                strokeWidth = 3.dp
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "অধ্যায় লোড হচ্ছে…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// ── Error state ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun ReadingErrorState(
+    message: String,
+    onRetry: () -> Unit,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.Default.ArrowBack,
+                    contentDescription = "ফিরে যান",
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("⚠️", fontSize = 44.sp)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "অধ্যায় লোড করা যায়নি",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = onRetry) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("আবার চেষ্টা করুন")
+            }
+        }
+    }
+}
+
+// ── Success state: full reading UI ──────────────────────────────────────────
+
+@Composable
+private fun ReadingContent(
+    chapter: Chapter,
+    fontSize: Float,
+    lineHeight: Float,
+    readingTheme: ReadingTheme,
+    savedScrollFraction: Float?,
+    onScrollProgressChanged: (Float) -> Unit,
+    onLeaveScreen: (Float) -> Unit,
+    onFontIncrease: () -> Unit,
+    onFontDecrease: () -> Unit,
+    onLineHeightIncrease: () -> Unit,
+    onLineHeightDecrease: () -> Unit,
+    onThemeChange: (ReadingTheme) -> Unit,
+    onBack: () -> Unit
+) {
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsPanelVisible by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
-    // Reading theme background / text colours (pulled from MaterialTheme via parent)
     val backgroundColor = MaterialTheme.colorScheme.background
     val textColor = MaterialTheme.colorScheme.onBackground
+
+    // Track current scroll fraction (0f..1f), reported up for debounced saving.
+    val currentFraction by remember {
+        derivedStateOf {
+            if (scrollState.maxValue > 0) {
+                scrollState.value.toFloat() / scrollState.maxValue
+            } else 0f
+        }
+    }
+
+    LaunchedEffect(currentFraction) {
+        onScrollProgressChanged(currentFraction)
+    }
+
+    // Save immediately when this composable leaves composition (back press, etc).
+    DisposableEffect(Unit) {
+        onDispose { onLeaveScreen(currentFraction) }
+    }
+
+    // Whether to show the "resume" floating action button — only meaningful
+    // before the user has scrolled in this session, and only if there's a
+    // saved position worth jumping to.
+    val showResumeButton = savedScrollFraction != null &&
+            savedScrollFraction > 0.02f &&
+            scrollState.value == 0
 
     Box(
         modifier = Modifier
@@ -79,66 +282,62 @@ fun ReadingScreen(
                     end = 20.dp
                 )
         ) {
-            chapter?.let { ch ->
-                // Chapter number
-                Text(
-                    text = "অধ্যায় ${ch.chapterNo}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+            // Chapter number
+            Text(
+                text = "অধ্যায় ${chapter.chapterNo}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
 
-                // Chapter title
+            // Chapter title
+            Text(
+                text = chapter.title,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontSize = (fontSize + 4).sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = (fontSize + 14).sp,
+                    color = textColor
+                ),
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            // Decorative divider
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                thickness = 1.5.dp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            // Main content: split by newlines to respect paragraph breaks
+            val paragraphs = remember(chapter.chapterNo) {
+                chapter.content.split("\n").filter { it.isNotBlank() }
+            }
+            paragraphs.forEach { paragraph ->
                 Text(
-                    text = ch.title,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = (fontSize + 4).sp,
-                        fontWeight = FontWeight.Bold,
-                        lineHeight = (fontSize + 14).sp,
-                        color = textColor
+                    text = paragraph.trim(),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = fontSize.sp,
+                        lineHeight = (fontSize * lineHeight).sp,
+                        color = textColor,
+                        textAlign = TextAlign.Justify
                     ),
-                    modifier = Modifier.padding(bottom = 24.dp)
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
+            }
 
-                // Decorative divider
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                    thickness = 1.5.dp,
-                    modifier = Modifier.padding(bottom = 24.dp)
+            Spacer(Modifier.height(32.dp))
+
+            // End-of-chapter marker
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "﴿ সমাপ্ত ﴾",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                // Main content: split by newlines to respect paragraph breaks
-                val paragraphs = ch.content.split("\n").filter { it.isNotBlank() }
-                paragraphs.forEach { paragraph ->
-                    Text(
-                        text = paragraph.trim(),
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = fontSize.sp,
-                            lineHeight = (fontSize * lineHeight).sp,
-                            color = textColor,
-                            textAlign = TextAlign.Justify
-                        ),
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(32.dp))
-
-                // End-of-chapter marker
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "﴿ সমাপ্ত ﴾",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } ?: run {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("কোনো অধ্যায় নির্বাচিত হয়নি")
-                }
             }
         }
 
@@ -169,7 +368,7 @@ fun ReadingScreen(
                         )
                     }
                     Text(
-                        text = chapter?.title?.take(40)?.plus(if ((chapter?.title?.length ?: 0) > 40) "…" else "") ?: "",
+                        text = chapter.title.take(40) + if (chapter.title.length > 40) "…" else "",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
@@ -197,19 +396,46 @@ fun ReadingScreen(
                 fontSize = fontSize,
                 lineHeight = lineHeight,
                 currentTheme = readingTheme,
-                onFontIncrease = { viewModel.increaseFontSize() },
-                onFontDecrease = { viewModel.decreaseFontSize() },
-                onLineHeightIncrease = { viewModel.increaseLineHeight() },
-                onLineHeightDecrease = { viewModel.decreaseLineHeight() },
-                onThemeChange = { viewModel.setReadingTheme(it) },
+                onFontIncrease = onFontIncrease,
+                onFontDecrease = onFontDecrease,
+                onLineHeightIncrease = onLineHeightIncrease,
+                onLineHeightDecrease = onLineHeightDecrease,
+                onThemeChange = onThemeChange,
                 onDismiss = { settingsPanelVisible = false }
+            )
+        }
+
+        // ── Resume-position shortcut ──────────────────────────────────────────
+        AnimatedVisibility(
+            visible = showResumeButton,
+            enter = fadeIn(tween(250)) + scaleIn(tween(250), initialScale = 0.8f),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 24.dp)
+        ) {
+            ExtendedFloatingActionButton(
+                onClick = {
+                    savedScrollFraction?.let { fraction ->
+                        coroutineScope.launch {
+                            val targetY = (scrollState.maxValue * fraction).toInt()
+                            scrollState.animateScrollTo(targetY)
+                        }
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                icon = {
+                    Icon(Icons.Default.BookmarkBorder, contentDescription = null)
+                },
+                text = { Text("শেষ পঠিত অংশে যান") }
             )
         }
 
         // ── Scroll progress indicator ───────────────────────────────────────
         if (scrollState.maxValue > 0) {
             LinearProgressIndicator(
-                progress = { scrollState.value.toFloat() / scrollState.maxValue },
+                progress = { currentFraction },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp)
@@ -217,6 +443,29 @@ fun ReadingScreen(
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = Color.Transparent
             )
+        }
+
+        // ── Percentage read badge (bottom-left, subtle) ───────────────────────
+        AnimatedVisibility(
+            visible = controlsVisible && scrollState.maxValue > 0,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 24.dp)
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 2.dp
+            ) {
+                Text(
+                    text = "${(currentFraction * 100).toInt()}% পঠিত",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
         }
     }
 }
