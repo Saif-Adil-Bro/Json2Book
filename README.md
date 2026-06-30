@@ -1,0 +1,159 @@
+# 📖 Dynamic Book Reader
+
+একটি সম্পূর্ণ ডেটা-চালিত Android বুক রিডার অ্যাপ — Kotlin, Jetpack Compose এবং MVVM আর্কিটেকচার দিয়ে তৈরি।
+
+---
+
+## ✨ মূল বৈশিষ্ট্যসমূহ
+
+| বৈশিষ্ট্য | বিবরণ |
+|---|---|
+| **১০০% ডেটা-চালিত** | `book_data.json` পরিবর্তন করলে পুরো অ্যাপ আপডেট হয় |
+| **MVVM আর্কিটেকচার** | Clean, modular, testable কোড |
+| **Material 3 UI** | Modern, polished Bengali-friendly UI |
+| **Splash Screen** | JSON থেকে বইয়ের নাম dynamically দেখায় |
+| **Chapter List** | Staggered animated chapter cards |
+| **Reading Screen** | Font size, Line height, Day/Night/Sepia theme |
+| **DataStore** | পাঠের পছন্দ সেশন পেরিয়ে সংরক্ষিত থাকে |
+| **CI/CD** | GitHub Actions দিয়ে স্বয়ংক্রিয় APK বিল্ড |
+
+---
+
+## 📁 প্রজেক্ট স্ট্রাকচার
+
+```
+DynamicBookReader/
+├── .github/
+│   └── workflows/
+│       └── android.yml             ← GitHub Actions CI/CD
+├── app/
+│   └── src/main/
+│       ├── assets/
+│       │   └── book_data.json      ← ✅ একমাত্র এই ফাইল পরিবর্তন করুন
+│       └── java/com/dynamicbookreader/
+│           ├── data/
+│           │   ├── model/
+│           │   │   └── BookData.kt         ← JSON → Kotlin data classes
+│           │   └── repository/
+│           │       ├── BookRepository.kt   ← ডেটা সোর্স লেয়ার
+│           │       └── ReadingPreferencesRepository.kt
+│           ├── utils/
+│           │   └── JsonParser.kt           ← Async JSON parser
+│           ├── viewmodel/
+│           │   └── BookViewModel.kt        ← UI state management
+│           └── ui/
+│               ├── theme/
+│               │   ├── Theme.kt            ← Day/Night/Sepia themes
+│               │   └── Typography.kt
+│               ├── screens/
+│               │   ├── SplashScreen.kt
+│               │   ├── HomeScreen.kt
+│               │   └── ReadingScreen.kt
+│               ├── AppNavigation.kt
+│               └── Screen.kt
+├── gradle/
+│   └── libs.versions.toml          ← Single version source for all deps
+├── .gitignore
+└── README.md
+```
+
+---
+
+## 📝 JSON ফাইল পরিবর্তনের নিয়ম
+
+`app/src/main/assets/book_data.json` ফাইলটি সম্পাদনা করুন:
+
+```json
+{
+  "book_title": "আপনার বইয়ের নাম",
+  "data": [
+    {
+      "chapter_no": 1,
+      "title": "অধ্যায়ের শিরোনাম",
+      "content": "সম্পূর্ণ অধ্যায়ের বিষয়বস্তু এখানে লিখুন।\n\nনতুন অনুচ্ছেদের জন্য \\n ব্যবহার করুন।"
+    }
+  ]
+}
+```
+
+**গুরুত্বপূর্ণ নিয়মাবলী:**
+- `chapter_no` অবশ্যই unique integer হতে হবে।
+- `content` এ `\n` দিয়ে অনুচ্ছেদ আলাদা করুন।
+- ফাইলটি সংরক্ষণ করলে পরের বিল্ডে সব পরিবর্তন দেখা যাবে।
+
+---
+
+## 🚀 GitHub Actions দিয়ে APK বিল্ড
+
+### প্রথমবার সেটআপ
+
+```bash
+# ১. GitHub-এ repository তৈরি করুন
+# ২. প্রজেক্ট push করুন
+git init
+git add .
+git commit -m "Initial commit: Dynamic Book Reader"
+git remote add origin https://github.com/আপনার-username/DynamicBookReader.git
+git push -u origin main
+```
+
+### APK ডাউনলোড করবেন কীভাবে?
+
+1. GitHub-এ **Actions** ট্যাবে যান।
+2. সর্বশেষ workflow run-এ ক্লিক করুন।
+3. পৃষ্ঠার নিচে **Artifacts** সেকশনে `DynamicBookReader-debug-N` ডাউনলোড করুন।
+
+---
+
+## 🛠️ লোকাল ডেভেলপমেন্ট (Termux)
+
+```bash
+# Android SDK পাথ সেট করুন
+export ANDROID_HOME=$HOME/android-sdk
+export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+
+# Debug APK বিল্ড করুন
+./gradlew assembleDebug
+
+# APK এর লোকেশন:
+# app/build/outputs/apk/debug/app-debug.apk
+```
+
+---
+
+## 🏗️ টেকনিক্যাল স্ট্যাক
+
+| লেয়ার | টেকনোলজি |
+|---|---|
+| **Language** | Kotlin 2.0 |
+| **UI** | Jetpack Compose + Material 3 |
+| **Architecture** | MVVM + Repository Pattern |
+| **JSON Parsing** | Kotlinx Serialization |
+| **Navigation** | Jetpack Navigation Compose |
+| **Async** | Kotlin Coroutines + StateFlow |
+| **Persistence** | Jetpack DataStore Preferences |
+| **CI/CD** | GitHub Actions |
+| **Min SDK** | API 26 (Android 8.0) |
+| **Target SDK** | API 35 (Android 15) |
+
+---
+
+## 📱 স্ক্রিনসমূহ
+
+### ১. Splash Screen
+- বইয়ের নাম JSON থেকে dynamically দেখায়
+- Fade + scale animation
+- ডেটা লোড না হওয়া পর্যন্ত অপেক্ষা করে
+
+### ২. Home Screen (Chapter List)
+- Hero banner-এ বইয়ের নাম
+- Staggered animated chapter cards
+- প্রতিটি card-এ chapter number badge + title + content preview
+
+### ৩. Reading Screen
+- Tap to show/hide controls (immersive mode)
+- **A+ / A−**: ফন্ট সাইজ পরিবর্তন (12sp–28sp)
+- **+ / −**: লাইন উচ্চতা পরিবর্তন (1.2×–2.8×)
+- **☀️ দিন / 🌙 রাত / 📜 সেপিয়া**: থিম পরিবর্তন
+- Scroll progress indicator
+- সব পছন্দ DataStore-এ সংরক্ষিত থাকে
