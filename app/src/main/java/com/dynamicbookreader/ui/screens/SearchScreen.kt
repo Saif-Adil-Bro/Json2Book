@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
+import com.dynamicbookreader.utils.ChapterContentParser
 import com.dynamicbookreader.viewmodel.BookViewModel
 
 /**
@@ -161,7 +162,7 @@ private fun SearchResultCard(
     // Build a short snippet around the first match in the content, so the
     // user sees *why* this chapter matched rather than just the title.
     val snippet = remember(chapter.chapterNo, query) {
-        buildSnippet(chapter.content, query)
+        buildSnippet(ChapterContentParser.stripFootnoteMarkers(chapter.content), query)
     }
 
     Card(

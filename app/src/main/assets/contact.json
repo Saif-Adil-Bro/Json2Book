@@ -5,22 +5,22 @@
     {
       "type": "email",
       "label": "ইমেইল",
-      "value": "Ammamun94@gmail.com"
+      "value": "support@example.com"
     },
     {
       "type": "phone",
       "label": "ফোন",
-      "value": "+৮৮০ ১৬০০-৯৮৯৫৫৫"
+      "value": "+৮৮০ ১৭XX-XXXXXX"
     },
     {
       "type": "website",
       "label": "ওয়েবসাইট",
-      "value": "www.MuslimsLibrary.org"
+      "value": "www.example.com"
     },
     {
       "type": "facebook",
       "label": "ফেসবুক পেজ",
-      "value": "fb.com/MuslimsLibrary"
+      "value": "fb.com/example"
     }
   ]
 }

@@ -24,12 +24,33 @@ object ChapterContentParser {
     /** Need at least this many confirmed repeats to justify showing a ToC. */
     private const val MIN_CONFIRMED_ENTRIES = 2
 
+    /** Matches inline footnote markers like {{note:1}} or {{note:abc}}. */
+    private val FOOTNOTE_MARKER_REGEX = Regex("""\{\{note:([^}]+)\}\}""")
+
+    /**
+     * A piece of a paragraph's text — either plain prose or a reference to
+     * a footnote (by [key], matching [com.dynamicbookreader.data.model.Footnote.key]).
+     * A paragraph with no `{{note:...}}` markers parses to a single [Plain] segment.
+     */
+    sealed class TextSegment {
+        data class Plain(val text: String) : TextSegment()
+        data class FootnoteRef(val key: String, val displayNumber: Int) : TextSegment()
+    }
+
     /**
      * A single renderable paragraph. [headingKey] is non-null when this
      * exact paragraph text matches a confirmed ToC entry — i.e. this is
-     * the in-body heading a ToC row should scroll to.
+     * the in-body heading a ToC row should scroll to. [segments] is the
+     * paragraph text broken into plain-text and footnote-reference pieces.
      */
-    data class ContentBlock(val text: String, val headingKey: String? = null)
+    data class ContentBlock(
+        val segments: List<TextSegment>,
+        val headingKey: String? = null
+    ) {
+        /** Plain-text fallback (footnote markers stripped) — used for ToC matching, previews, etc. */
+        val plainText: String
+            get() = segments.joinToString("") { if (it is TextSegment.Plain) it.text else "" }
+    }
 
     data class ParsedChapter(
         /** Confirmed table-of-contents entries, in original order. Empty if none detected. */
@@ -51,73 +72,117 @@ object ChapterContentParser {
      * (they'd otherwise appear twice — once as the ToC listing, once as
      * the in-body heading). If no ToC is detected, [blocks] contains every
      * non-blank line untouched, exactly as before.
+     *
+     * Footnote markers (`{{note:KEY}}`) are parsed out of every paragraph
+     * (ToC detection uses the marker-stripped plain text, so markers never
+     * interfere with heading matching) and numbered in first-appearance
+     * order across the whole chapter, matching how printed footnotes work.
      */
     fun parse(rawContent: String, chapterTitle: String? = null): ParsedChapter {
-        val allLines = rawContent.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-        if (allLines.isEmpty()) return ParsedChapter(emptyList(), emptyList())
+        val rawLines = rawContent.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+        if (rawLines.isEmpty()) return ParsedChapter(emptyList(), emptyList())
+
+        // Strip footnote markers to get the plain-text version of each line
+        // for ToC candidate/confirmation matching — a heading should match
+        // even if one of its occurrences happens to carry a footnote.
+        val plainLines = rawLines.map { stripFootnoteMarkers(it) }
 
         // Optional literal "সূচিপত্র" label as the very first line — if present,
         // it's a strong signal but not required (some chapters may omit it).
         var startIndex = 0
-        if (allLines.first() == "সূচিপত্র") startIndex = 1
+        if (plainLines.first() == "সূচিপত্র") startIndex = 1
 
-        // Collect the leading run of candidate heading lines. Two stop
-        // conditions, whichever comes first:
+        // Collect the leading run of candidate heading lines (matched on
+        // plain text). Two stop conditions, whichever comes first:
         //  1. A line exceeds MAX_HEADING_LENGTH (clearly body prose), or
-        //  2. The chapter's own title line is encountered — since the title
-        //     is repeated verbatim right before the body starts, and is
-        //     itself short, a length check alone would wrongly swallow it
-        //     (and the heading line immediately following it) into the
-        //     candidate block.
+        //  2. The chapter's own title line is encountered.
         val candidates = mutableListOf<String>()
         var i = startIndex
-        while (i < allLines.size) {
-            val line = allLines[i]
-            if (chapterTitle != null && line == chapterTitle.trim()) {
-                i++ // consume the title line itself, then stop collecting
+        while (i < plainLines.size) {
+            val plain = plainLines[i]
+            if (chapterTitle != null && plain == chapterTitle.trim()) {
+                i++
                 break
             }
-            if (line.length > MAX_HEADING_LENGTH) break
-            candidates.add(line)
+            if (plain.length > MAX_HEADING_LENGTH) break
+            candidates.add(plain)
             i++
         }
 
         val bodyStartIndex = i
-        val bodyLines = allLines.subList(bodyStartIndex, allLines.size)
+        val bodyPlainLines = plainLines.subList(bodyStartIndex, plainLines.size)
+        val bodyRawLines = rawLines.subList(bodyStartIndex, rawLines.size)
 
         // Confirm each candidate: does it reappear verbatim later in the body?
         val confirmed = candidates.filter { candidate ->
-            bodyLines.any { it == candidate }
+            bodyPlainLines.any { it == candidate }
+        }
+
+        // Running counter for footnote display numbers, assigned in the
+        // order markers are first encountered across the chapter.
+        val footnoteNumbers = LinkedHashMap<String, Int>()
+
+        fun nextFootnoteBlock(rawLine: String, headingKey: String? = null): ContentBlock {
+            val segments = splitIntoSegments(rawLine, footnoteNumbers)
+            return ContentBlock(segments = segments, headingKey = headingKey)
         }
 
         if (confirmed.size < MIN_CONFIRMED_ENTRIES) {
             // Not a real ToC — render everything as plain paragraphs, untouched.
             return ParsedChapter(
                 tocEntries = emptyList(),
-                blocks = allLines.map { ContentBlock(it) }
+                blocks = rawLines.map { nextFootnoteBlock(it) }
             )
         }
 
-        // Build a lookup for quick "is this line a confirmed heading?" checks
-        // while walking the body, so each heading paragraph gets a stable
-        // key the UI can scroll to. A heading's exact text CAN legitimately
-        // repeat in the body (e.g. used as a section divider twice), so we
-        // disambiguate by occurrence count, not just text — otherwise two
-        // headings would collide on the same LazyColumn item key.
         val confirmedSet = confirmed.toHashSet()
         val occurrenceCounter = HashMap<String, Int>()
 
-        val blocks = bodyLines.map { line ->
-            if (line in confirmedSet) {
-                val occurrence = occurrenceCounter.getOrDefault(line, 0)
-                occurrenceCounter[line] = occurrence + 1
-                ContentBlock(text = line, headingKey = headingKey(line, occurrence))
+        val blocks = bodyRawLines.mapIndexed { idx, rawLine ->
+            val plain = bodyPlainLines[idx]
+            if (plain in confirmedSet) {
+                val occurrence = occurrenceCounter.getOrDefault(plain, 0)
+                occurrenceCounter[plain] = occurrence + 1
+                nextFootnoteBlock(rawLine, headingKey(plain, occurrence))
             } else {
-                ContentBlock(text = line)
+                nextFootnoteBlock(rawLine)
             }
         }
 
         return ParsedChapter(tocEntries = confirmed, blocks = blocks)
+    }
+
+    /** Removes `{{note:...}}` markers, leaving plain prose (used for ToC matching, and available for preview text elsewhere in the app). */
+    fun stripFootnoteMarkers(line: String): String =
+        FOOTNOTE_MARKER_REGEX.replace(line, "").trim()
+
+    /**
+     * Splits [rawLine] into [TextSegment]s, extracting footnote markers and
+     * assigning each a running display number via [footnoteNumbers] (shared
+     * across the whole chapter so numbering is sequential, e.g. ¹ ² ³…).
+     */
+    private fun splitIntoSegments(
+        rawLine: String,
+        footnoteNumbers: LinkedHashMap<String, Int>
+    ): List<TextSegment> {
+        val matches = FOOTNOTE_MARKER_REGEX.findAll(rawLine).toList()
+        if (matches.isEmpty()) return listOf(TextSegment.Plain(rawLine))
+
+        val segments = mutableListOf<TextSegment>()
+        var cursor = 0
+        for (match in matches) {
+            if (match.range.first > cursor) {
+                segments.add(TextSegment.Plain(rawLine.substring(cursor, match.range.first)))
+            }
+            val key = match.groupValues[1].trim()
+            val number = footnoteNumbers.getOrPut(key) { footnoteNumbers.size + 1 }
+            segments.add(TextSegment.FootnoteRef(key = key, displayNumber = number))
+            cursor = match.range.last + 1
+        }
+        if (cursor < rawLine.length) {
+            segments.add(TextSegment.Plain(rawLine.substring(cursor)))
+        }
+        return segments
     }
 
     /**

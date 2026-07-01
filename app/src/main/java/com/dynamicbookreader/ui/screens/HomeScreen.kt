@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.data.repository.ReadingProgress
+import com.dynamicbookreader.utils.ChapterContentParser
 import com.dynamicbookreader.viewmodel.AuthorUiState
 import com.dynamicbookreader.viewmodel.BookUiState
 import com.dynamicbookreader.viewmodel.BookViewModel
@@ -343,8 +344,10 @@ private fun ChapterCard(
 ) {
     // Cache the preview substring once per chapter — avoids recomputing
     // String.take()/trim() on every recomposition while scrolling.
+    // Footnote markers are stripped so raw {{note:KEY}} text never leaks
+    // into the preview.
     val previewText = remember(chapter.chapterNo) {
-        chapter.content.take(80).trim() + "…"
+        ChapterContentParser.stripFootnoteMarkers(chapter.content).take(80).trim() + "…"
     }
 
     Card(
@@ -399,14 +402,26 @@ private fun ChapterCard(
 
                 Spacer(Modifier.height(4.dp))
 
-                // Content preview (precomputed above)
-                Text(
-                    text = previewText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (chapter.subtitle.isNotBlank()) {
+                    // Subtitle takes priority over the content preview when
+                    // present, to keep the card from feeling cluttered.
+                    Text(
+                        text = chapter.subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    // Content preview (precomputed above)
+                    Text(
+                        text = previewText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Spacer(Modifier.width(8.dp))

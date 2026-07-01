@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,8 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
@@ -236,6 +243,12 @@ private fun ReadingContent(
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsPanelVisible by remember { mutableStateOf(false) }
     var tocExpanded by remember { mutableStateOf(true) }
+    var selectedFootnoteKey by remember { mutableStateOf<String?>(null) }
+
+    // Quick key -> text lookup for footnotes defined on this chapter.
+    val footnoteLookup = remember(chapter.chapterNo) {
+        chapter.footnotes.associateBy { it.key }
+    }
 
     // Parse once per chapter: splits content into paragraphs and — when
     // detected — a confirmed table-of-contents block (see
@@ -339,15 +352,31 @@ private fun ReadingContent(
                     end = 20.dp
                 )
             ) {
-                // Chapter number + title (single item — always cheap to render)
+                // Chapter number + title + optional subtitle/page range
                 item(key = "header") {
                     Column {
-                        Text(
-                            text = "অধ্যায় ${chapter.chapterNo}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "অধ্যায় ${chapter.chapterNo}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (chapter.pageRange.isNotBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text(
+                                        text = "পাতা ${chapter.pageRange}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             text = chapter.title,
                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -355,9 +384,20 @@ private fun ReadingContent(
                                 fontWeight = FontWeight.Bold,
                                 lineHeight = (fontSize + 14).sp,
                                 color = textColor
-                            ),
-                            modifier = Modifier.padding(bottom = if (hasToc) 16.dp else 24.dp)
+                            )
                         )
+                        if (chapter.subtitle.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = chapter.subtitle,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = (fontSize - 2).coerceAtLeast(12f).sp,
+                                    lineHeight = (fontSize + 4).sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.height(if (hasToc) 16.dp else 24.dp))
                     }
                 }
 
@@ -394,33 +434,80 @@ private fun ReadingContent(
 
                 // Main content: one lazy item per paragraph. Selection spans
                 // across items since the whole LazyColumn is wrapped in a
-                // single SelectionContainer above.
+                // single SelectionContainer above. Footnote markers render
+                // as clickable superscript numbers.
                 itemsIndexed(
                     items = parsedChapter.blocks,
                     key = { index, block -> block.headingKey ?: "para_$index" }
                 ) { _, block ->
-                    Text(
-                        text = block.text,
-                        style = if (block.headingKey != null) {
-                            MaterialTheme.typography.titleMedium.copy(
-                                fontSize = (fontSize + 1).sp,
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = (fontSize * lineHeight).sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = fontSize.sp,
-                                lineHeight = (fontSize * lineHeight).sp,
-                                color = textColor,
-                                textAlign = TextAlign.Justify
-                            )
-                        },
-                        modifier = Modifier.padding(
-                            top = if (block.headingKey != null) 8.dp else 0.dp,
-                            bottom = 16.dp
+                    val isHeading = block.headingKey != null
+                    val baseStyle = if (isHeading) {
+                        MaterialTheme.typography.titleMedium.copy(
+                            fontSize = (fontSize + 1).sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = (fontSize * lineHeight).sp,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                    )
+                    } else {
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = fontSize.sp,
+                            lineHeight = (fontSize * lineHeight).sp,
+                            color = textColor,
+                            textAlign = TextAlign.Justify
+                        )
+                    }
+
+                    val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
+
+                    if (!hasFootnotes) {
+                        // Fast path: no footnotes in this paragraph, render as plain Text.
+                        Text(
+                            text = block.plainText,
+                            style = baseStyle,
+                            modifier = Modifier.padding(
+                                top = if (isHeading) 8.dp else 0.dp,
+                                bottom = 16.dp
+                            )
+                        )
+                    } else {
+                        val footnoteColor = MaterialTheme.colorScheme.primary
+                        val annotated = remember(block, footnoteColor) {
+                            buildAnnotatedString {
+                                block.segments.forEach { segment ->
+                                    when (segment) {
+                                        is ChapterContentParser.TextSegment.Plain ->
+                                            append(segment.text)
+                                        is ChapterContentParser.TextSegment.FootnoteRef -> {
+                                            pushStringAnnotation(
+                                                tag = "footnote",
+                                                annotation = segment.key
+                                            )
+                                            withStyle(
+                                                SpanStyle(
+                                                    color = footnoteColor,
+                                                    fontWeight = FontWeight.Bold,
+                                                    baselineShift = BaselineShift.Superscript,
+                                                    fontSize = (fontSize * 0.7f).sp
+                                                )
+                                            ) {
+                                                append("[${segment.displayNumber}]")
+                                            }
+                                            pop()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        FootnoteAwareText(
+                            text = annotated,
+                            style = baseStyle,
+                            onFootnoteClick = { key -> selectedFootnoteKey = key },
+                            modifier = Modifier.padding(
+                                top = if (isHeading) 8.dp else 0.dp,
+                                bottom = 16.dp
+                            )
+                        )
+                    }
                 }
 
                 // End-of-chapter marker
@@ -571,6 +658,80 @@ private fun ReadingContent(
             }
         }
     }
+
+    // ── Footnote popup ──────────────────────────────────────────────────────
+    val activeFootnote = selectedFootnoteKey?.let { footnoteLookup[it] }
+    if (selectedFootnoteKey != null) {
+        FootnoteDialog(
+            footnoteText = activeFootnote?.text,
+            onDismiss = { selectedFootnoteKey = null }
+        )
+    }
+}
+
+// ── Footnote popup dialog ───────────────────────────────────────────────────
+
+@Composable
+private fun FootnoteDialog(
+    footnoteText: String?,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Notes,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = { Text("টীকা") },
+        text = {
+            Text(
+                text = footnoteText ?: "এই টীকার তথ্য পাওয়া যায়নি।",
+                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("বন্ধ করুন")
+            }
+        }
+    )
+}
+
+// ── Footnote-aware text renderer ────────────────────────────────────────────
+
+/**
+ * Renders an [AnnotatedString] that may contain "footnote" string
+ * annotations (pushed via `pushStringAnnotation(tag = "footnote", ...)`)
+ * and invokes [onFootnoteClick] with the annotation's key when the user
+ * taps directly on one of those spans. Taps elsewhere in the text are
+ * ignored (so normal reading/selection isn't affected).
+ */
+@Composable
+private fun FootnoteAwareText(
+    text: AnnotatedString,
+    style: androidx.compose.ui.text.TextStyle,
+    onFootnoteClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+
+    Text(
+        text = text,
+        style = style,
+        modifier = modifier.pointerInput(text) {
+            detectTapGestures { offset ->
+                val result = layoutResult ?: return@detectTapGestures
+                val position = result.getOffsetForPosition(offset)
+                text.getStringAnnotations(tag = "footnote", start = position, end = position)
+                    .firstOrNull()
+                    ?.let { onFootnoteClick(it.item) }
+            }
+        },
+        onTextLayout = { layoutResult = it }
+    )
 }
 
 // ── Table of Contents card ──────────────────────────────────────────────────

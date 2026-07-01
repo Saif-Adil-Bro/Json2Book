@@ -17,7 +17,25 @@ data class BookData(
 data class Chapter(
     @SerialName("chapter_no") val chapterNo: Int,
     @SerialName("title") val title: String,
-    @SerialName("content") val content: String
+    @SerialName("content") val content: String,
+    /** Optional short subtitle shown under the title on Home card + Reading header. */
+    @SerialName("subtitle") val subtitle: String = "",
+    /** Optional printed-book page range, e.g. "৩৫–৪২". Shown once at the top of the Reading screen. */
+    @SerialName("page_range") val pageRange: String = "",
+    /**
+     * Optional footnotes. Reference a footnote inline in [content] using
+     * `{{note:KEY}}` (e.g. `...কুরাইশ বংশ{{note:1}} ছিল...`), then define
+     * its text here with a matching [Footnote.key]. Markers with no
+     * matching key are rendered as plain text so a typo never breaks
+     * rendering.
+     */
+    @SerialName("footnotes") val footnotes: List<Footnote> = emptyList()
+)
+
+@Serializable
+data class Footnote(
+    @SerialName("key") val key: String,
+    @SerialName("text") val text: String
 )
 
 /**

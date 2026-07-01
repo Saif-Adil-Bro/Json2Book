@@ -17,7 +17,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-     
+        
         // Bengali font support
         resourceConfigurations += listOf("en", "bn")
     }
@@ -86,11 +86,12 @@ dependencies {
     // Splash Screen API
     implementation(libs.androidx.core.splashscreen)
     
+    // Google Material Components
+    implementation("com.google.android.material:material:1.11.0")
+
+    
     // DataStore (persist reading preferences)
     implementation(libs.androidx.datastore.preferences)
-
-    // Google Material Components (Added for fixing Theme error)
-    implementation("com.google.android.material:material:1.11.0")
     
     // Testing
     testImplementation(libs.junit)
