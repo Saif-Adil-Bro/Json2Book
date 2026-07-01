@@ -4,6 +4,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -228,18 +231,40 @@ private fun ReadingContent(
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsPanelVisible by remember { mutableStateOf(false) }
 
-    val scrollState = rememberScrollState()
+    // Paragraph list built once per chapter — each paragraph becomes its own
+    // lazy item, so long chapters render/scroll smoothly (only visible
+    // paragraphs are composed & measured, same idea as the chapter list).
+    val paragraphs = remember(chapter.chapterNo) {
+        chapter.content.split("\n").filter { it.isNotBlank() }.map { it.trim() }
+    }
+    // +3 synthetic items: chapter number, title+divider block, end marker.
+    val totalItemCount = paragraphs.size + 3
+
+    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
     val backgroundColor = MaterialTheme.colorScheme.background
     val textColor = MaterialTheme.colorScheme.onBackground
 
-    // Track current scroll fraction (0f..1f), reported up for debounced saving.
+    // Approximate scroll fraction from item position — cheap and stable,
+    // avoids needing exact pixel heights of variable-length paragraphs.
     val currentFraction by remember {
         derivedStateOf {
-            if (scrollState.maxValue > 0) {
-                scrollState.value.toFloat() / scrollState.maxValue
-            } else 0f
+            val layoutInfo = listState.layoutInfo
+            val total = layoutInfo.totalItemsCount
+            if (total <= 1) return@derivedStateOf 0f
+
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
+            if (lastVisible != null && lastVisible.index == total - 1) {
+                // Last item is at least partially visible — check if it's
+                // fully on-screen to report 100%, otherwise interpolate.
+                val viewportEnd = layoutInfo.viewportEndOffset
+                val itemBottom = lastVisible.offset + lastVisible.size
+                if (itemBottom <= viewportEnd) return@derivedStateOf 1f
+            }
+
+            val firstIndex = listState.firstVisibleItemIndex
+            firstIndex.toFloat() / (total - 1).toFloat()
         }
     }
 
@@ -257,7 +282,8 @@ private fun ReadingContent(
     // saved position worth jumping to.
     val showResumeButton = savedScrollFraction != null &&
             savedScrollFraction > 0.02f &&
-            scrollState.value == 0
+            listState.firstVisibleItemIndex == 0 &&
+            listState.firstVisibleItemScrollOffset == 0
 
     Box(
         modifier = Modifier
@@ -270,52 +296,51 @@ private fun ReadingContent(
                 if (!settingsPanelVisible) controlsVisible = !controlsVisible
             }
     ) {
-        // ── Scrollable reading content ──────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(
-                    top = if (controlsVisible) 72.dp else 24.dp,
-                    bottom = if (controlsVisible) 100.dp else 40.dp,
-                    start = 20.dp,
-                    end = 20.dp
-                )
+        // ── Lazily-rendered reading content ───────────────────────────────────
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                top = if (controlsVisible) 72.dp else 24.dp,
+                bottom = if (controlsVisible) 100.dp else 40.dp,
+                start = 20.dp,
+                end = 20.dp
+            )
         ) {
-            // Chapter number
-            Text(
-                text = "অধ্যায় ${chapter.chapterNo}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            // Chapter title
-            Text(
-                text = chapter.title,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = (fontSize + 4).sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = (fontSize + 14).sp,
-                    color = textColor
-                ),
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            // Decorative divider
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                thickness = 1.5.dp,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            // Main content: split by newlines to respect paragraph breaks
-            val paragraphs = remember(chapter.chapterNo) {
-                chapter.content.split("\n").filter { it.isNotBlank() }
+            // Chapter number + title + divider (single item — always cheap to render)
+            item(key = "header") {
+                Column {
+                    Text(
+                        text = "অধ্যায় ${chapter.chapterNo}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = chapter.title,
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontSize = (fontSize + 4).sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = (fontSize + 14).sp,
+                            color = textColor
+                        ),
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        thickness = 1.5.dp,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+                }
             }
-            paragraphs.forEach { paragraph ->
+
+            // Main content: one lazy item per paragraph
+            itemsIndexed(
+                items = paragraphs,
+                key = { index, _ -> "para_$index" }
+            ) { _, paragraph ->
                 Text(
-                    text = paragraph.trim(),
+                    text = paragraph,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = fontSize.sp,
                         lineHeight = (fontSize * lineHeight).sp,
@@ -326,18 +351,21 @@ private fun ReadingContent(
                 )
             }
 
-            Spacer(Modifier.height(32.dp))
-
             // End-of-chapter marker
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "﴿ সমাপ্ত ﴾",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            item(key = "end_marker") {
+                Column {
+                    Spacer(Modifier.height(32.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "﴿ সমাপ্ত ﴾",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
@@ -418,8 +446,10 @@ private fun ReadingContent(
                 onClick = {
                     savedScrollFraction?.let { fraction ->
                         coroutineScope.launch {
-                            val targetY = (scrollState.maxValue * fraction).toInt()
-                            scrollState.animateScrollTo(targetY)
+                            val targetIndex = (fraction * (totalItemCount - 1))
+                                .toInt()
+                                .coerceIn(0, totalItemCount - 1)
+                            listState.animateScrollToItem(targetIndex)
                         }
                     }
                 },
@@ -433,7 +463,7 @@ private fun ReadingContent(
         }
 
         // ── Scroll progress indicator ───────────────────────────────────────
-        if (scrollState.maxValue > 0) {
+        if (totalItemCount > 1) {
             LinearProgressIndicator(
                 progress = { currentFraction },
                 modifier = Modifier
@@ -447,7 +477,7 @@ private fun ReadingContent(
 
         // ── Percentage read badge (bottom-left, subtle) ───────────────────────
         AnimatedVisibility(
-            visible = controlsVisible && scrollState.maxValue > 0,
+            visible = controlsVisible && totalItemCount > 1,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(200)),
             modifier = Modifier

@@ -8,13 +8,18 @@
 
 | বৈশিষ্ট্য | বিবরণ |
 |---|---|
-| **১০০% ডেটা-চালিত** | `book_data.json` পরিবর্তন করলে পুরো অ্যাপ আপডেট হয় |
+| **১০০% ডেটা-চালিত** | `book_data.json` ও `author.json` পরিবর্তন করলে পুরো অ্যাপ আপডেট হয় |
 | **MVVM আর্কিটেকচার** | Clean, modular, testable কোড |
 | **Material 3 UI** | Modern, polished Bengali-friendly UI |
+| **ইন-মেমরি ক্যাশ** | JSON একবার parse হয়ে সেশনজুড়ে cached থাকে — instant navigation |
 | **Splash Screen** | JSON থেকে বইয়ের নাম dynamically দেখায় |
-| **Chapter List** | Staggered animated chapter cards |
-| **Reading Screen** | Font size, Line height, Day/Night/Sepia theme |
-| **DataStore** | পাঠের পছন্দ সেশন পেরিয়ে সংরক্ষিত থাকে |
+| **Hero + লেখক পরিচিতি** | বই ও লেখকের সংক্ষিপ্ত তথ্য, "আরো পড়ুন" থেকে সম্পূর্ণ জীবনী |
+| **৩-ট্যাব বটম নেভিগেশন** | হোম / সার্চ / মেনু |
+| **স্থানীয় সার্চ** | অধ্যায়ের শিরোনাম ও বিষয়বস্তুতে অফলাইন সার্চ |
+| **Lazy Chapter Rendering** | প্যারাগ্রাফ-লেভেল `LazyColumn` — বড় অধ্যায়েও স্মুথ স্ক্রল |
+| **Reading Progress** | স্বয়ংক্রিয় প্রোগ্রেস ট্র্যাকিং + "শেষ পঠিত অংশে যান" শর্টকাট |
+| **Loading/Error states** | প্রতিটি ডেটা লোডে আলাদা loading spinner ও error+retry UI |
+| **DataStore** | পাঠের পছন্দ ও প্রোগ্রেস সেশন পেরিয়ে সংরক্ষিত থাকে |
 | **CI/CD** | GitHub Actions দিয়ে স্বয়ংক্রিয় APK বিল্ড |
 
 ---
@@ -23,36 +28,38 @@
 
 ```
 DynamicBookReader/
-├── .github/
-│   └── workflows/
-│       └── android.yml             ← GitHub Actions CI/CD
-├── app/
-│   └── src/main/
-│       ├── assets/
-│       │   └── book_data.json      ← ✅ একমাত্র এই ফাইল পরিবর্তন করুন
-│       └── java/com/dynamicbookreader/
-│           ├── data/
-│           │   ├── model/
-│           │   │   └── BookData.kt         ← JSON → Kotlin data classes
-│           │   └── repository/
-│           │       ├── BookRepository.kt   ← ডেটা সোর্স লেয়ার
-│           │       └── ReadingPreferencesRepository.kt
-│           ├── utils/
-│           │   └── JsonParser.kt           ← Async JSON parser
-│           ├── viewmodel/
-│           │   └── BookViewModel.kt        ← UI state management
-│           └── ui/
-│               ├── theme/
-│               │   ├── Theme.kt            ← Day/Night/Sepia themes
-│               │   └── Typography.kt
-│               ├── screens/
-│               │   ├── SplashScreen.kt
-│               │   ├── HomeScreen.kt
-│               │   └── ReadingScreen.kt
-│               ├── AppNavigation.kt
-│               └── Screen.kt
-├── gradle/
-│   └── libs.versions.toml          ← Single version source for all deps
+├── .github/workflows/android.yml   ← GitHub Actions CI/CD
+├── app/src/main/
+│   ├── assets/
+│   │   ├── book_data.json          ← ✅ বইয়ের কন্টেন্ট
+│   │   └── author.json             ← ✅ লেখকের তথ্য
+│   └── java/com/dynamicbookreader/
+│       ├── data/
+│       │   ├── model/BookData.kt          ← Chapter, Author models
+│       │   └── repository/
+│       │       ├── BookRepository.kt        (in-memory cached)
+│       │       ├── AuthorRepository.kt       (in-memory cached)
+│       │       ├── ReadingPreferencesRepository.kt
+│       │       └── ReadingProgressRepository.kt
+│       ├── utils/JsonParser.kt
+│       ├── viewmodel/BookViewModel.kt      ← সব UI state এখানে
+│       └── ui/
+│           ├── theme/
+│           ├── components/BottomNavBar.kt
+│           ├── screens/
+│           │   ├── SplashScreen.kt
+│           │   ├── HomeScreen.kt            (hero + continue-reading + list)
+│           │   ├── SearchScreen.kt
+│           │   ├── MenuScreen.kt
+│           │   ├── ReadingScreen.kt         (lazy paragraphs + progress)
+│           │   ├── AuthorDetailScreen.kt
+│           │   ├── SettingsScreen.kt
+│           │   ├── ContactScreen.kt
+│           │   ├── PrivacyPolicyScreen.kt
+│           │   └── AboutScreen.kt
+│           ├── AppNavigation.kt
+│           └── Screen.kt
+├── gradle/libs.versions.toml
 ├── .gitignore
 └── README.md
 ```

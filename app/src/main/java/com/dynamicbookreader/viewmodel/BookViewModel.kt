@@ -3,8 +3,10 @@ package com.dynamicbookreader.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.dynamicbookreader.data.model.Author
 import com.dynamicbookreader.data.model.BookData
 import com.dynamicbookreader.data.model.Chapter
+import com.dynamicbookreader.data.repository.AuthorRepository
 import com.dynamicbookreader.data.repository.BookRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_FONT_SIZE
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -44,6 +47,13 @@ sealed class ChapterUiState {
     data class Error(val message: String) : ChapterUiState()
 }
 
+/** State of the author.json load (used by the hero section + author detail page). */
+sealed class AuthorUiState {
+    object Loading : AuthorUiState()
+    data class Success(val author: Author) : AuthorUiState()
+    data class Error(val message: String) : AuthorUiState()
+}
+
 // ── ViewModel ────────────────────────────────────────────────────────────────
 
 /**
@@ -55,6 +65,7 @@ sealed class ChapterUiState {
 class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val bookRepository = BookRepository(application)
+    private val authorRepository = AuthorRepository(application)
     private val prefsRepository = ReadingPreferencesRepository(application)
     private val progressRepository = ReadingProgressRepository(application)
 
@@ -63,10 +74,34 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow<BookUiState>(BookUiState.Loading)
     val uiState: StateFlow<BookUiState> = _uiState.asStateFlow()
 
+    // ── Author state (hero section + author detail page) ─────────────────────
+
+    private val _authorUiState = MutableStateFlow<AuthorUiState>(AuthorUiState.Loading)
+    val authorUiState: StateFlow<AuthorUiState> = _authorUiState.asStateFlow()
+
     // ── Selected / opened chapter state (Reading screen) ─────────────────────
 
     private val _chapterUiState = MutableStateFlow<ChapterUiState>(ChapterUiState.Idle)
     val chapterUiState: StateFlow<ChapterUiState> = _chapterUiState.asStateFlow()
+
+    // ── Search (local, in-memory — filters the already-loaded chapters) ──────
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    /**
+     * Chapters whose title or content match [searchQuery] (case-insensitive).
+     * Empty query -> empty result list (search tab shows a prompt instead of
+     * dumping the whole book).
+     */
+    val searchResults: StateFlow<List<Chapter>> = combine(_searchQuery, uiState) { query, book ->
+        if (query.isBlank()) return@combine emptyList()
+        val chapters = (book as? BookUiState.Success)?.bookData?.chapters ?: return@combine emptyList()
+        chapters.filter { chapter ->
+            chapter.title.contains(query, ignoreCase = true) ||
+                    chapter.content.contains(query, ignoreCase = true)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // ── Reading preferences (persisted via DataStore) ────────────────────────
 
@@ -95,6 +130,7 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadBook()
+        loadAuthor()
     }
 
     // ── Public API: book / chapter list ──────────────────────────────────────
@@ -122,6 +158,42 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.value = BookUiState.Error(result.message)
             }
         }
+    }
+
+    // ── Public API: author ────────────────────────────────────────────────────
+
+    fun loadAuthor() {
+        viewModelScope.launch {
+            _authorUiState.value = AuthorUiState.Loading
+            when (val result = authorRepository.getAuthor()) {
+                is JsonParser.Result.Success ->
+                    _authorUiState.value = AuthorUiState.Success(result.data)
+                is JsonParser.Result.Error ->
+                    _authorUiState.value = AuthorUiState.Error(result.message)
+            }
+        }
+    }
+
+    fun reloadAuthorFromSource() {
+        viewModelScope.launch {
+            _authorUiState.value = AuthorUiState.Loading
+            when (val result = authorRepository.getAuthor(forceRefresh = true)) {
+                is JsonParser.Result.Success ->
+                    _authorUiState.value = AuthorUiState.Success(result.data)
+                is JsonParser.Result.Error ->
+                    _authorUiState.value = AuthorUiState.Error(result.message)
+            }
+        }
+    }
+
+    // ── Public API: search ────────────────────────────────────────────────────
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun clearSearch() {
+        _searchQuery.value = ""
     }
 
     // ── Public API: opening a chapter ────────────────────────────────────────

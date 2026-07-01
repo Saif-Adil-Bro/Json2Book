@@ -21,20 +21,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.data.repository.ReadingProgress
+import com.dynamicbookreader.viewmodel.AuthorUiState
 import com.dynamicbookreader.viewmodel.BookUiState
 import com.dynamicbookreader.viewmodel.BookViewModel
 
 /**
  * Home / Chapter List screen.
  *
- * - Shows book title from JSON at the top (in a hero banner).
+ * - Shows book title + author (from JSON) at the top in a hero banner.
  * - "Continue reading" shortcut card if the user has prior progress.
  * - Lazily-loaded, performant list of chapter cards.
  * - Error state with retry button (bypasses cache on retry).
@@ -44,9 +44,11 @@ import com.dynamicbookreader.viewmodel.BookViewModel
 fun HomeScreen(
     viewModel: BookViewModel,
     onChapterClick: (Chapter) -> Unit,
-    onContinueReadingClick: (chapterNo: Int) -> Unit
+    onContinueReadingClick: (chapterNo: Int) -> Unit,
+    onAuthorReadMoreClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val authorState by viewModel.authorUiState.collectAsState()
     val readingProgress by viewModel.readingProgress.collectAsState()
 
     Scaffold(
@@ -73,7 +75,11 @@ fun HomeScreen(
                     ) {
                         // ── Hero Banner ──────────────────────────────────────
                         item {
-                            HeroBanner(bookTitle = bookData.bookTitle)
+                            HeroBanner(
+                                bookTitle = bookData.bookTitle,
+                                authorState = authorState,
+                                onReadMoreClick = onAuthorReadMoreClick
+                            )
                         }
 
                         // ── Continue Reading shortcut ─────────────────────────
@@ -195,11 +201,14 @@ private fun ContinueReadingCard(
 
 
 @Composable
-private fun HeroBanner(bookTitle: String) {
+private fun HeroBanner(
+    bookTitle: String,
+    authorState: AuthorUiState,
+    onReadMoreClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(220.dp)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
@@ -211,9 +220,8 @@ private fun HeroBanner(bookTitle: String) {
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 28.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 28.dp)
         ) {
             // App icon row
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -231,6 +239,8 @@ private fun HeroBanner(bookTitle: String) {
                 )
             }
 
+            Spacer(Modifier.height(16.dp))
+
             // Dynamic book title from JSON
             Text(
                 text = bookTitle,
@@ -241,23 +251,54 @@ private fun HeroBanner(bookTitle: String) {
                 ),
                 color = MaterialTheme.colorScheme.onPrimary
             )
-        }
 
-        // Decorative bottom fade
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.15f)
-                        )
-                    )
+            // ── Author section (only rendered once author.json resolves) ────
+            if (authorState is AuthorUiState.Success) {
+                val author = authorState.author
+
+                Spacer(Modifier.height(14.dp))
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.20f),
+                    thickness = 1.dp
                 )
-        )
+
+                Spacer(Modifier.height(14.dp))
+
+                Text(
+                    text = "লেখক",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.65f)
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = author.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+
+                Spacer(Modifier.height(6.dp))
+
+                Text(
+                    text = author.shortBio,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 21.sp),
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "আরো পড়ুন ›",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.clickable(onClick = onReadMoreClick)
+                )
+            }
+        }
     }
 }
 

@@ -19,3 +19,19 @@ data class Chapter(
     @SerialName("title") val title: String,
     @SerialName("content") val content: String
 )
+
+/**
+ * Author info — parsed from the separate `author.json` asset.
+ * Kept independent of [BookData] so multi-book setups can share one author
+ * file, or swap authors without touching book_data.json.
+ */
+@Serializable
+data class Author(
+    @SerialName("name") val name: String,
+    @SerialName("name_en") val nameEn: String = "",
+    @SerialName("photo_url") val photoUrl: String = "",
+    @SerialName("birth_year") val birthYear: String = "",
+    @SerialName("death_year") val deathYear: String = "",
+    @SerialName("short_bio") val shortBio: String,
+    @SerialName("full_biography") val fullBiography: String
+)

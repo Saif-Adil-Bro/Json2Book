@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.DynamicBookReader" parent="android:Theme.DeviceDefault.NoActionBar">
+    <!-- Base application theme (Material3 dynamic / light) -->
+    <style name="Theme.DynamicBookReader" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <style name="Theme.DynamicBookReader.SplashScreen" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#1A3A5C</item>
+    <!-- Splash Screen theme — used only for the launch window -->
+    <style name="Theme.DynamicBookReader.SplashScreen" parent="Theme.DynamicBookReader">
+        <!-- postSplashScreenTheme restores the real theme after the splash -->
+        <item name="android:windowSplashScreenBackground">#1A3A5C</item>
         <item name="postSplashScreenTheme">@style/Theme.DynamicBookReader</item>
     </style>
 
