@@ -3,12 +3,14 @@ package com.dynamicbookreader.utils
 import android.content.Context
 import com.dynamicbookreader.data.model.Author
 import com.dynamicbookreader.data.model.BookData
+import com.dynamicbookreader.data.model.ContactInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 /**
- * Utility object that reads JSON asset files (book_data.json, author.json).
+ * Utility object that reads JSON asset files (book_data.json, author.json,
+ * contact.json).
  *
  * - Runs on IO dispatcher (non-blocking).
  * - Returns a sealed Result so the caller decides how to handle errors.
@@ -19,6 +21,7 @@ object JsonParser {
 
     private const val BOOK_ASSET_FILE = "book_data.json"
     private const val AUTHOR_ASSET_FILE = "author.json"
+    private const val CONTACT_ASSET_FILE = "contact.json"
 
     private val json = Json {
         ignoreUnknownKeys = true   // future-proof: extra JSON keys won't crash
@@ -50,6 +53,12 @@ object JsonParser {
      */
     suspend fun loadAuthor(context: Context): Result<Author> =
         readAsset(context, AUTHOR_ASSET_FILE) { json.decodeFromString<Author>(it) }
+
+    /**
+     * Parses [CONTACT_ASSET_FILE] asynchronously and returns [Result].
+     */
+    suspend fun loadContactInfo(context: Context): Result<ContactInfo> =
+        readAsset(context, CONTACT_ASSET_FILE) { json.decodeFromString<ContactInfo>(it) }
 
     /**
      * Shared read + parse + error-mapping logic for any JSON asset file.

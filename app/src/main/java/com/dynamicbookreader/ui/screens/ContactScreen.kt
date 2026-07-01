@@ -3,27 +3,49 @@ package com.dynamicbookreader.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.dynamicbookreader.data.model.ContactItem
+import com.dynamicbookreader.viewmodel.BookViewModel
+import com.dynamicbookreader.viewmodel.ContactUiState
 
 /**
- * Contact page — static content for now. If you'd like this data-driven
- * too (e.g. from a contact.json asset), it follows the exact same pattern
- * as AuthorRepository/JsonParser.
+ * Contact page — 100% data-driven from `contact.json`. Edit that file to
+ * change the intro text or add/remove/reorder contact methods; no UI code
+ * changes needed. Unrecognized `type` values still render correctly with
+ * a generic link icon.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactScreen(onBack: () -> Unit) {
+fun ContactScreen(
+    viewModel: BookViewModel,
+    onBack: () -> Unit
+) {
+    val contactState by viewModel.contactUiState.collectAsState()
+
+    // Lazy-load on first visit; the ViewModel skips re-fetching if already loaded.
+    LaunchedEffect(Unit) {
+        viewModel.loadContactInfoIfNeeded()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -36,37 +58,80 @@ fun ContactScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(20.dp)
         ) {
-            Text(
-                text = "আমাদের সাথে যোগাযোগ করুন",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            Text(
-                text = "যেকোনো মতামত, পরামর্শ বা প্রশ্নের জন্য নিচের মাধ্যমে যোগাযোগ করতে পারেন।",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
+            when (val state = contactState) {
+                is ContactUiState.Idle, is ContactUiState.Loading -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+                }
 
-            ContactRow(Icons.Default.Email, "ইমেইল", "support@example.com")
-            ContactRow(Icons.Default.Phone, "ফোন", "+৮৮০ ১XXX-XXXXXX")
-            ContactRow(Icons.Default.Language, "ওয়েবসাইট", "www.example.com")
+                is ContactUiState.Error -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(32.dp)
+                        ) {
+                            Text("⚠️", fontSize = 44.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = "যোগাযোগের তথ্য লোড করা যায়নি",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(24.dp))
+                            Button(onClick = { viewModel.reloadContactInfoFromSource() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("আবার চেষ্টা করুন")
+                            }
+                        }
+                    }
+                }
+
+                is ContactUiState.Success -> {
+                    val info = state.contactInfo
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp)
+                    ) {
+                        Text(
+                            text = info.introTitle,
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = info.introText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 24.dp)
+                        )
+
+                        info.items.forEach { item ->
+                            ContactRow(item)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ContactRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String
-) {
+private fun ContactRow(item: ContactItem) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -81,7 +146,7 @@ private fun ContactRow(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = icon,
+                imageVector = iconForContactType(item.type),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(20.dp)
@@ -90,14 +155,29 @@ private fun ContactRow(
         Spacer(Modifier.width(14.dp))
         Column {
             Text(
-                text = label,
+                text = item.label,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = value,
+                text = item.value,
                 style = MaterialTheme.typography.bodyLarge
             )
         }
     }
+}
+
+/**
+ * Maps a `type` string from contact.json to an icon. Unrecognized types
+ * (e.g. future additions like "whatsapp" or "telegram" before an icon is
+ * wired up) fall back to a generic link icon instead of crashing or
+ * rendering nothing — the JSON stays the single source of truth without
+ * requiring a matching code change for every new type.
+ */
+private fun iconForContactType(type: String): ImageVector = when (type.lowercase()) {
+    "email" -> Icons.Default.Email
+    "phone" -> Icons.Default.Phone
+    "website" -> Icons.Default.Language
+    "facebook" -> Icons.Default.Public
+    else -> Icons.Default.Link
 }

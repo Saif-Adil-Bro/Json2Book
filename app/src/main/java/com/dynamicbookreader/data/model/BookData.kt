@@ -35,3 +35,24 @@ data class Author(
     @SerialName("short_bio") val shortBio: String,
     @SerialName("full_biography") val fullBiography: String
 )
+
+/**
+ * Contact page content — parsed from the separate `contact.json` asset.
+ * [items] is an open-ended list so new contact methods (WhatsApp, Telegram,
+ * X/Twitter, etc.) can be added purely via JSON — [ContactType] maps a
+ * recognized `type` string to an icon; unknown types still render fine
+ * with a generic fallback icon.
+ */
+@Serializable
+data class ContactInfo(
+    @SerialName("intro_title") val introTitle: String,
+    @SerialName("intro_text") val introText: String,
+    @SerialName("items") val items: List<ContactItem>
+)
+
+@Serializable
+data class ContactItem(
+    @SerialName("type") val type: String,
+    @SerialName("label") val label: String,
+    @SerialName("value") val value: String
+)

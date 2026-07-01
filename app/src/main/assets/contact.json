@@ -1,0 +1,26 @@
+{
+  "intro_title": "আমাদের সাথে যোগাযোগ করুন",
+  "intro_text": "যেকোনো মতামত, পরামর্শ বা প্রশ্নের জন্য নিচের মাধ্যমে যোগাযোগ করতে পারেন।",
+  "items": [
+    {
+      "type": "email",
+      "label": "ইমেইল",
+      "value": "support@example.com"
+    },
+    {
+      "type": "phone",
+      "label": "ফোন",
+      "value": "+৮৮০ ১৭XX-XXXXXX"
+    },
+    {
+      "type": "website",
+      "label": "ওয়েবসাইট",
+      "value": "www.example.com"
+    },
+    {
+      "type": "facebook",
+      "label": "ফেসবুক পেজ",
+      "value": "fb.com/example"
+    }
+  ]
+}

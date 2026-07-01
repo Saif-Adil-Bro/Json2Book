@@ -171,7 +171,10 @@ fun AppNavigation(
                     )
                 }
                 composable(Screen.Contact.route) {
-                    ContactScreen(onBack = { navController.popBackStack() })
+                    ContactScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
                 composable(Screen.PrivacyPolicy.route) {
                     PrivacyPolicyScreen(onBack = { navController.popBackStack() })

@@ -1,6 +1,7 @@
 package com.dynamicbookreader.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -22,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.ui.theme.ReadingTheme
+import com.dynamicbookreader.utils.ChapterContentParser
 import com.dynamicbookreader.viewmodel.BookViewModel
 import com.dynamicbookreader.viewmodel.ChapterUiState
 import kotlinx.coroutines.launch
@@ -230,21 +235,47 @@ private fun ReadingContent(
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsPanelVisible by remember { mutableStateOf(false) }
+    var tocExpanded by remember { mutableStateOf(true) }
 
-    // Paragraph list built once per chapter — each paragraph becomes its own
-    // lazy item, so long chapters render/scroll smoothly (only visible
-    // paragraphs are composed & measured, same idea as the chapter list).
-    val paragraphs = remember(chapter.chapterNo) {
-        chapter.content.split("\n").filter { it.isNotBlank() }.map { it.trim() }
+    // Parse once per chapter: splits content into paragraphs and — when
+    // detected — a confirmed table-of-contents block (see
+    // ChapterContentParser for the detection rule). If no ToC is found,
+    // tocEntries is empty and every line renders as a plain paragraph,
+    // identical to before.
+    val parsedChapter = remember(chapter.chapterNo) {
+        ChapterContentParser.parse(chapter.content, chapter.title)
     }
-    // +3 synthetic items: chapter number, title+divider block, end marker.
-    val totalItemCount = paragraphs.size + 3
+    val hasToc = parsedChapter.tocEntries.isNotEmpty()
+
+    // +3 synthetic items: header block, end marker, plus +1 for the ToC
+    // card when present.
+    val totalItemCount = parsedChapter.blocks.size + 2 + (if (hasToc) 1 else 0)
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
     val backgroundColor = MaterialTheme.colorScheme.background
     val textColor = MaterialTheme.colorScheme.onBackground
+
+    // Maps a heading's first-occurrence key to its LazyColumn item index,
+    // so tapping a ToC row can scroll straight to it. Built once per
+    // chapter parse — cheap, since it's just an index scan.
+    val headingIndexMap = remember(parsedChapter) {
+        val map = HashMap<String, Int>()
+        // Item 0 is the header block; ToC card (if present) is item 1;
+        // body blocks start right after.
+        val bodyStartIndex = 1 + (if (hasToc) 1 else 0)
+        parsedChapter.blocks.forEachIndexed { i, block ->
+            if (block.headingKey != null && block.headingKey !in map) {
+                map[block.headingKey] = bodyStartIndex + i
+            }
+        }
+        map
+    }
+    // First-occurrence lookup: ToC entry text -> its headingKey (occurrence 0).
+    val tocEntryToHeadingKey = remember(parsedChapter) {
+        parsedChapter.tocEntries.associateWith { ChapterContentParser.headingKey(it, 0) }
+    }
 
     // Approximate scroll fraction from item position — cheap and stable,
     // avoids needing exact pixel heights of variable-length paragraphs.
@@ -296,74 +327,116 @@ private fun ReadingContent(
                 if (!settingsPanelVisible) controlsVisible = !controlsVisible
             }
     ) {
-        // ── Lazily-rendered reading content ───────────────────────────────────
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = if (controlsVisible) 72.dp else 24.dp,
-                bottom = if (controlsVisible) 100.dp else 40.dp,
-                start = 20.dp,
-                end = 20.dp
-            )
-        ) {
-            // Chapter number + title + divider (single item — always cheap to render)
-            item(key = "header") {
-                Column {
+        // ── Lazily-rendered reading content (wrapped once for cross-paragraph selection) ──
+        SelectionContainer {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = if (controlsVisible) 72.dp else 24.dp,
+                    bottom = if (controlsVisible) 100.dp else 40.dp,
+                    start = 20.dp,
+                    end = 20.dp
+                )
+            ) {
+                // Chapter number + title (single item — always cheap to render)
+                item(key = "header") {
+                    Column {
+                        Text(
+                            text = "অধ্যায় ${chapter.chapterNo}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = chapter.title,
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontSize = (fontSize + 4).sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = (fontSize + 14).sp,
+                                color = textColor
+                            ),
+                            modifier = Modifier.padding(bottom = if (hasToc) 16.dp else 24.dp)
+                        )
+                    }
+                }
+
+                // Collapsible table of contents (only when confirmed headings were found)
+                if (hasToc) {
+                    item(key = "toc_card") {
+                        DisableSelection {
+                            TocCard(
+                                entries = parsedChapter.tocEntries,
+                                expanded = tocExpanded,
+                                onToggleExpanded = { tocExpanded = !tocExpanded },
+                                onEntryClick = { entry ->
+                                    val headingKey = tocEntryToHeadingKey[entry]
+                                    val targetIndex = headingKey?.let { headingIndexMap[it] }
+                                    if (targetIndex != null) {
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(targetIndex)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.padding(bottom = 24.dp)
+                            )
+                        }
+                    }
+                } else {
+                    item(key = "header_divider") {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                            thickness = 1.5.dp,
+                            modifier = Modifier.padding(bottom = 24.dp)
+                        )
+                    }
+                }
+
+                // Main content: one lazy item per paragraph. Selection spans
+                // across items since the whole LazyColumn is wrapped in a
+                // single SelectionContainer above.
+                itemsIndexed(
+                    items = parsedChapter.blocks,
+                    key = { index, block -> block.headingKey ?: "para_$index" }
+                ) { _, block ->
                     Text(
-                        text = "অধ্যায় ${chapter.chapterNo}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    Text(
-                        text = chapter.title,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontSize = (fontSize + 4).sp,
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = (fontSize + 14).sp,
-                            color = textColor
-                        ),
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                        thickness = 1.5.dp,
-                        modifier = Modifier.padding(bottom = 24.dp)
+                        text = block.text,
+                        style = if (block.headingKey != null) {
+                            MaterialTheme.typography.titleMedium.copy(
+                                fontSize = (fontSize + 1).sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = (fontSize * lineHeight).sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = fontSize.sp,
+                                lineHeight = (fontSize * lineHeight).sp,
+                                color = textColor,
+                                textAlign = TextAlign.Justify
+                            )
+                        },
+                        modifier = Modifier.padding(
+                            top = if (block.headingKey != null) 8.dp else 0.dp,
+                            bottom = 16.dp
+                        )
                     )
                 }
-            }
 
-            // Main content: one lazy item per paragraph
-            itemsIndexed(
-                items = paragraphs,
-                key = { index, _ -> "para_$index" }
-            ) { _, paragraph ->
-                Text(
-                    text = paragraph,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = fontSize.sp,
-                        lineHeight = (fontSize * lineHeight).sp,
-                        color = textColor,
-                        textAlign = TextAlign.Justify
-                    ),
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-            }
-
-            // End-of-chapter marker
-            item(key = "end_marker") {
-                Column {
-                    Spacer(Modifier.height(32.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "﴿ সমাপ্ত ﴾",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                // End-of-chapter marker
+                item(key = "end_marker") {
+                    Column {
+                        Spacer(Modifier.height(32.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "﴿ সমাপ্ত ﴾",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -495,6 +568,103 @@ private fun ReadingContent(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
+            }
+        }
+    }
+}
+
+// ── Table of Contents card ──────────────────────────────────────────────────
+
+@Composable
+private fun TocCard(
+    entries: List<String>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onEntryClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "toc_chevron_rotation"
+    )
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column {
+            // Header row — always visible, toggles expand/collapse
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpanded)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.List,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "সূচিপত্র",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "${entries.size} টি",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "সঙ্কুচিত করুন" else "সম্প্রসারিত করুন",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.rotate(rotation)
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    entries.forEachIndexed { index, entry ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEntryClick(entry) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${index + 1}.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(end = 10.dp)
+                            )
+                            Text(
+                                text = entry,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

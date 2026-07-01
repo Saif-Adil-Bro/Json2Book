@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.dynamicbookreader.data.model.Author
 import com.dynamicbookreader.data.model.BookData
 import com.dynamicbookreader.data.model.Chapter
+import com.dynamicbookreader.data.model.ContactInfo
 import com.dynamicbookreader.data.repository.AuthorRepository
 import com.dynamicbookreader.data.repository.BookRepository
+import com.dynamicbookreader.data.repository.ContactRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_FONT_SIZE
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_LINE_HEIGHT
@@ -54,6 +56,18 @@ sealed class AuthorUiState {
     data class Error(val message: String) : AuthorUiState()
 }
 
+/**
+ * State of the contact.json load. Lazy-loaded (Idle until the Contact page
+ * is first opened) since it's small and rarely-visited — no reason to
+ * delay/compete with book + author loading at app start.
+ */
+sealed class ContactUiState {
+    object Idle : ContactUiState()
+    object Loading : ContactUiState()
+    data class Success(val contactInfo: ContactInfo) : ContactUiState()
+    data class Error(val message: String) : ContactUiState()
+}
+
 // ── ViewModel ────────────────────────────────────────────────────────────────
 
 /**
@@ -66,6 +80,7 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val bookRepository = BookRepository(application)
     private val authorRepository = AuthorRepository(application)
+    private val contactRepository = ContactRepository(application)
     private val prefsRepository = ReadingPreferencesRepository(application)
     private val progressRepository = ReadingProgressRepository(application)
 
@@ -78,6 +93,11 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _authorUiState = MutableStateFlow<AuthorUiState>(AuthorUiState.Loading)
     val authorUiState: StateFlow<AuthorUiState> = _authorUiState.asStateFlow()
+
+    // ── Contact state (Menu → Contact page, lazy-loaded) ──────────────────────
+
+    private val _contactUiState = MutableStateFlow<ContactUiState>(ContactUiState.Idle)
+    val contactUiState: StateFlow<ContactUiState> = _contactUiState.asStateFlow()
 
     // ── Selected / opened chapter state (Reading screen) ─────────────────────
 
@@ -182,6 +202,38 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
                     _authorUiState.value = AuthorUiState.Success(result.data)
                 is JsonParser.Result.Error ->
                     _authorUiState.value = AuthorUiState.Error(result.message)
+            }
+        }
+    }
+
+    // ── Public API: contact ───────────────────────────────────────────────────
+
+    /**
+     * Loads contact.json on demand (called when the Contact screen appears).
+     * Skips reloading if already successfully loaded, so re-visiting the
+     * page doesn't re-read the asset file every time.
+     */
+    fun loadContactInfoIfNeeded() {
+        if (_contactUiState.value is ContactUiState.Success) return
+        viewModelScope.launch {
+            _contactUiState.value = ContactUiState.Loading
+            when (val result = contactRepository.getContactInfo()) {
+                is JsonParser.Result.Success ->
+                    _contactUiState.value = ContactUiState.Success(result.data)
+                is JsonParser.Result.Error ->
+                    _contactUiState.value = ContactUiState.Error(result.message)
+            }
+        }
+    }
+
+    fun reloadContactInfoFromSource() {
+        viewModelScope.launch {
+            _contactUiState.value = ContactUiState.Loading
+            when (val result = contactRepository.getContactInfo(forceRefresh = true)) {
+                is JsonParser.Result.Success ->
+                    _contactUiState.value = ContactUiState.Success(result.data)
+                is JsonParser.Result.Error ->
+                    _contactUiState.value = ContactUiState.Error(result.message)
             }
         }
     }

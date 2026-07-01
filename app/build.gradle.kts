@@ -17,7 +17,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
+     
         // Bengali font support
         resourceConfigurations += listOf("en", "bn")
     }
@@ -89,7 +89,7 @@ dependencies {
     // DataStore (persist reading preferences)
     implementation(libs.androidx.datastore.preferences)
 
-    // Google Material Components (Added to fix Theme.Material3 XML error)
+    // Google Material Components (Added for fixing Theme error)
     implementation("com.google.android.material:material:1.11.0")
     
     // Testing
