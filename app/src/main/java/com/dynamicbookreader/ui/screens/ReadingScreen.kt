@@ -335,12 +335,18 @@ private fun ReadingContent(
             listState.firstVisibleItemIndex == 0 &&
             listState.firstVisibleItemScrollOffset == 0
 
+    // Bumping this key forces the SelectionContainer below to fully recompose,
+    // which is the standard way to clear its active text selection (there is
+    // no public API to imperatively clear a SelectionContainer's selection).
+    var selectionResetKey by remember { mutableIntStateOf(0) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
             .pointerInput(settingsPanelVisible) {
                 detectTapGestures {
+                    selectionResetKey++
                     if (!settingsPanelVisible) {
                         controlsVisible = !controlsVisible
                     }
@@ -348,6 +354,12 @@ private fun ReadingContent(
             }
     ) {
         // ── Lazily-rendered reading content (wrapped once for cross-paragraph selection) ──
+        // key(selectionResetKey): recreates SelectionContainer's subtree
+        // whenever the outer Box registers a tap, which clears any active
+        // text selection (SelectionContainer has no public imperative
+        // "clear selection" API, so recomposition-via-key is the
+        // recommended workaround).
+        key(selectionResetKey) {
         SelectionContainer {
             LazyColumn(
                 state = listState,
@@ -562,6 +574,7 @@ private fun ReadingContent(
                 }
             }
         }
+        } // close key(selectionResetKey)
 
         // ── Top App Bar ─────────────────────────────────────────────────────
         AnimatedVisibility(

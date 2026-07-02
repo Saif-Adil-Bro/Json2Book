@@ -13,7 +13,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Refresh
@@ -23,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -372,6 +375,20 @@ private fun ChapterCard(
         ReadingTimeEstimator.remainingMinutes(chapter.content, progressFraction)
     }
 
+    // Reuses the same table-of-contents detection used on the Reading
+    // screen, so a chapter card can show its sub-sections right on the
+    // Home screen without opening the chapter. Empty when no confirmed
+    // ToC block is detected in this chapter's content.
+    val subheadings = remember(chapter.chapterNo) {
+        ChapterContentParser.parse(chapter.content, chapter.title).tocEntries
+    }
+    val hasSubheadings = subheadings.isNotEmpty()
+    var subheadingsExpanded by remember(chapter.chapterNo) { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (subheadingsExpanded) 180f else 0f,
+        label = "subheading_chevron_rotation"
+    )
+
     // ── Color scheme per state (stays within the app's light Material 3 palette) ──
     val containerColor = when {
         isCompleted -> Color(0xFFDCEEFF)   // soft blue tint — "done"
@@ -394,13 +411,16 @@ private fun ChapterCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .shadow(2.dp, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
+            .shadow(2.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .clickable(onClick = onClick)
+                .padding(16.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Chapter number badge
                 Box(
@@ -527,8 +547,78 @@ private fun ChapterCard(
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = accentColor,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
                 )
+            }
+        }
+
+        // ── Subheading expand toggle + list (separate click target from the card body) ──
+        if (hasSubheadings) {
+            HorizontalDivider(color = accentColor.copy(alpha = 0.15f), thickness = 1.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { subheadingsExpanded = !subheadingsExpanded }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (subheadingsExpanded) "পরিচ্ছেদ লুকান" else "পরিচ্ছেদসমূহ দেখুন (${subheadings.size})",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accentColor,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = if (subheadingsExpanded) "সঙ্কুচিত করুন" else "সম্প্রসারিত করুন",
+                    tint = accentColor,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(chevronRotation)
+                )
+            }
+
+            AnimatedVisibility(visible = subheadingsExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(onContainerColor.copy(alpha = 0.04f))
+                        .padding(vertical = 4.dp)
+                ) {
+                    subheadings.forEach { entry ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onClick)
+                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircleOutline,
+                                contentDescription = null,
+                                tint = onContainerColor.copy(alpha = 0.5f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = entry,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = onContainerColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = onContainerColor.copy(alpha = 0.4f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
