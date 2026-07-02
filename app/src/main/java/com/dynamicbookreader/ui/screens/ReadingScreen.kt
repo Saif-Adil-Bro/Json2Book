@@ -43,7 +43,8 @@ import kotlinx.coroutines.launch
  *
  * Features:
  * – Loads the requested chapter via [BookViewModel.openChapter] and reacts
- *   to Loading / Success / Error states.
+ *   to Loading / Success / Error states (cache makes this near-instant in
+ *   the common case, but the states still cover cold-start / failure).
  * – Tap anywhere to show/hide controls (immersive reading).
  * – Font size A+/A− with live preview.
  * – Line height +/− adjustment.
@@ -96,6 +97,7 @@ fun ReadingScreen(
                 lineHeight = lineHeight,
                 readingTheme = readingTheme,
                 // Only offer "resume" if the saved progress belongs to THIS chapter
+                // (otherwise it's stale progress from a different chapter).
                 savedScrollFraction = readingProgress
                     .takeIf { it.chapterNo == chapterNo }
                     ?.scrollFraction,
@@ -254,11 +256,18 @@ private fun ReadingContent(
         chapter.footnotes.associateBy { it.key }
     }
 
+    // Parse once per chapter: splits content into paragraphs and — when
+    // detected — a confirmed table-of-contents block (see
+    // ChapterContentParser for the detection rule). If no ToC is found,
+    // tocEntries is empty and every line renders as a plain paragraph,
+    // identical to before.
     val parsedChapter = remember(chapter.chapterNo) {
         ChapterContentParser.parse(chapter.content, chapter.title)
     }
     val hasToc = parsedChapter.tocEntries.isNotEmpty()
 
+    // +3 synthetic items: header block, end marker, plus +1 for the ToC
+    // card when present.
     val totalItemCount = parsedChapter.blocks.size + 2 + (if (hasToc) 1 else 0)
 
     val listState = rememberLazyListState()
@@ -267,8 +276,13 @@ private fun ReadingContent(
     val backgroundColor = MaterialTheme.colorScheme.background
     val textColor = MaterialTheme.colorScheme.onBackground
 
+    // Maps a heading's first-occurrence key to its LazyColumn item index,
+    // so tapping a ToC row can scroll straight to it. Built once per
+    // chapter parse — cheap, since it's just an index scan.
     val headingIndexMap = remember(parsedChapter) {
         val map = HashMap<String, Int>()
+        // Item 0 is the header block; ToC card (if present) is item 1;
+        // body blocks start right after.
         val bodyStartIndex = 1 + (if (hasToc) 1 else 0)
         parsedChapter.blocks.forEachIndexed { i, block ->
             if (block.headingKey != null && block.headingKey !in map) {
@@ -277,11 +291,13 @@ private fun ReadingContent(
         }
         map
     }
-    
+    // First-occurrence lookup: ToC entry text -> its headingKey (occurrence 0).
     val tocEntryToHeadingKey = remember(parsedChapter) {
         parsedChapter.tocEntries.associateWith { ChapterContentParser.headingKey(it, 0) }
     }
 
+    // Approximate scroll fraction from item position — cheap and stable,
+    // avoids needing exact pixel heights of variable-length paragraphs.
     val currentFraction by remember {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
@@ -290,6 +306,8 @@ private fun ReadingContent(
 
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
             if (lastVisible != null && lastVisible.index == total - 1) {
+                // Last item is at least partially visible — check if it's
+                // fully on-screen to report 100%, otherwise interpolate.
                 val viewportEnd = layoutInfo.viewportEndOffset
                 val itemBottom = lastVisible.offset + lastVisible.size
                 if (itemBottom <= viewportEnd) return@derivedStateOf 1f
@@ -304,10 +322,14 @@ private fun ReadingContent(
         onScrollProgressChanged(currentFraction)
     }
 
+    // Save immediately when this composable leaves composition (back press, etc).
     DisposableEffect(Unit) {
         onDispose { onLeaveScreen(currentFraction) }
     }
 
+    // Whether to show the "resume" floating action button — only meaningful
+    // before the user has scrolled in this session, and only if there's a
+    // saved position worth jumping to.
     val showResumeButton = savedScrollFraction != null &&
             savedScrollFraction > 0.02f &&
             listState.firstVisibleItemIndex == 0 &&
@@ -413,7 +435,7 @@ private fun ReadingContent(
                     }
                 }
 
-                // Collapsible table of contents
+                // Collapsible table of contents (only when confirmed headings were found)
                 if (hasToc) {
                     item(key = "toc_card") {
                         DisableSelection {
@@ -444,7 +466,10 @@ private fun ReadingContent(
                     }
                 }
 
-                // Main content
+                // Main content: one lazy item per paragraph. Selection spans
+                // across items since the whole LazyColumn is wrapped in a
+                // single SelectionContainer above. Footnote markers render
+                // as clickable superscript numbers.
                 itemsIndexed(
                     items = parsedChapter.blocks,
                     key = { index, block -> block.headingKey ?: "para_$index" }
@@ -469,6 +494,7 @@ private fun ReadingContent(
                     val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
 
                     if (!hasFootnotes) {
+                        // Fast path: no footnotes in this paragraph, render as plain Text.
                         Text(
                             text = block.plainText,
                             style = baseStyle,
@@ -710,6 +736,13 @@ private fun FootnoteDialog(
 
 // ── Footnote-aware text renderer ────────────────────────────────────────────
 
+/**
+ * Renders an [AnnotatedString] that may contain "footnote" string
+ * annotations (pushed via `pushStringAnnotation(tag = "footnote", ...)`)
+ * and invokes [onFootnoteClick] with the annotation's key when the user
+ * taps directly on one of those spans. Taps elsewhere in the text are
+ * ignored (so normal reading/selection isn't affected).
+ */
 @Composable
 private fun FootnoteAwareText(
     text: AnnotatedString,
@@ -759,6 +792,7 @@ private fun TocCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
+            // Header row — always visible, toggles expand/collapse
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -856,6 +890,7 @@ private fun ReadingSettingsPanel(
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .navigationBarsPadding()
         ) {
+            // Handle bar
             Box(
                 modifier = Modifier
                     .width(40.dp)
@@ -876,6 +911,7 @@ private fun ReadingSettingsPanel(
 
             Spacer(Modifier.height(20.dp))
 
+            // Font size row
             SettingsRow(label = "ফন্ট সাইজ: ${fontSize.toInt()}sp") {
                 ControlButton(label = "A−", onClick = onFontDecrease)
                 Spacer(Modifier.width(10.dp))
@@ -884,6 +920,7 @@ private fun ReadingSettingsPanel(
 
             Spacer(Modifier.height(12.dp))
 
+            // Line height row
             SettingsRow(label = "লাইন উচ্চতা: ${"%.1f".format(lineHeight)}×") {
                 ControlButton(label = "−", onClick = onLineHeightDecrease)
                 Spacer(Modifier.width(10.dp))
@@ -892,6 +929,7 @@ private fun ReadingSettingsPanel(
 
             Spacer(Modifier.height(16.dp))
 
+            // Theme row
             Text(
                 text = "থিম",
                 style = MaterialTheme.typography.labelLarge,
