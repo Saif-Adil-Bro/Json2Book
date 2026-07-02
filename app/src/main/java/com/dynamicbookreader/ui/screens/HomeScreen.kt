@@ -54,6 +54,7 @@ import com.dynamicbookreader.viewmodel.BookViewModel
 fun HomeScreen(
     viewModel: BookViewModel,
     onChapterClick: (Chapter) -> Unit,
+    onChapterSubheadingClick: (Chapter, headingText: String) -> Unit,
     onContinueReadingClick: (chapterNo: Int) -> Unit,
     onAuthorReadMoreClick: () -> Unit
 ) {
@@ -120,7 +121,10 @@ fun HomeScreen(
                                 chapter = chapter,
                                 progressFraction = perChapterProgress[chapter.chapterNo] ?: 0f,
                                 isLastRead = chapter.chapterNo == readingProgress.chapterNo,
-                                onClick = { onChapterClick(chapter) }
+                                onClick = { onChapterClick(chapter) },
+                                onSubheadingClick = { headingText ->
+                                    onChapterSubheadingClick(chapter, headingText)
+                                }
                             )
                         }
                     }
@@ -354,7 +358,8 @@ private fun ChapterCard(
     chapter: Chapter,
     progressFraction: Float,
     isLastRead: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onSubheadingClick: (headingText: String) -> Unit
 ) {
     // Cache the preview substring once per chapter — avoids recomputing
     // String.take()/trim() on every recomposition while scrolling.
@@ -591,7 +596,7 @@ private fun ChapterCard(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(onClick = onClick)
+                                .clickable { onSubheadingClick(entry) }
                                 .padding(horizontal = 20.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

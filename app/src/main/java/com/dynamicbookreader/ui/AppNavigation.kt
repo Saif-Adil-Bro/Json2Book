@@ -109,6 +109,11 @@ fun AppNavigation(
                         onChapterClick = { chapter ->
                             navController.navigate(Screen.Reading.createRoute(chapter.chapterNo))
                         },
+                        onChapterSubheadingClick = { chapter, headingText ->
+                            navController.navigate(
+                                Screen.Reading.createRouteWithTarget(chapter.chapterNo, headingText)
+                            )
+                        },
                         onContinueReadingClick = { chapterNo ->
                             navController.navigate(Screen.Reading.createRoute(chapterNo))
                         },
@@ -144,12 +149,22 @@ fun AppNavigation(
                     arguments = listOf(
                         androidx.navigation.navArgument("chapterNo") {
                             type = androidx.navigation.NavType.IntType
+                        },
+                        androidx.navigation.navArgument("targetHeading") {
+                            type = androidx.navigation.NavType.StringType
+                            nullable = true
+                            defaultValue = null
                         }
                     )
                 ) { entry ->
                     val chapterNo = entry.arguments?.getInt("chapterNo") ?: 1
+                    val targetHeadingEncoded = entry.arguments?.getString("targetHeading")
+                    val targetHeading = targetHeadingEncoded?.let {
+                        java.net.URLDecoder.decode(it, "UTF-8")
+                    }
                     ReadingScreen(
                         chapterNo = chapterNo,
+                        targetHeading = targetHeading,
                         viewModel = viewModel,
                         onBack = { navController.popBackStack() }
                     )

@@ -20,8 +20,22 @@ sealed class Screen(val route: String) {
     object Menu : Screen("menu")
 
     // ── Full-screen destinations (no bottom nav) ──────────────────────────
-    object Reading : Screen("reading/{chapterNo}") {
+    object Reading : Screen("reading/{chapterNo}?targetHeading={targetHeading}") {
+        /** Open a chapter at its top. */
         fun createRoute(chapterNo: Int) = "reading/$chapterNo"
+
+        /**
+         * Open a chapter and immediately scroll to a specific heading —
+         * used by the Home screen's "sub-sections" list and the in-Reading
+         * table of contents. [headingText] must be the *exact* heading line
+         * as it appears in the chapter's confirmed ToC (see
+         * ChapterContentParser) — it's URL-encoded here since heading text
+         * can contain parentheses, colons, and Arabic diacritics.
+         */
+        fun createRouteWithTarget(chapterNo: Int, headingText: String): String {
+            val encoded = java.net.URLEncoder.encode(headingText, "UTF-8")
+            return "reading/$chapterNo?targetHeading=$encoded"
+        }
     }
 
     object AuthorDetail : Screen("author_detail")

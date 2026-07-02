@@ -59,7 +59,8 @@ import kotlinx.coroutines.launch
 fun ReadingScreen(
     chapterNo: Int,
     viewModel: BookViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    targetHeading: String? = null
 ) {
     val chapterState by viewModel.chapterUiState.collectAsState()
     val fontSize by viewModel.fontSize.collectAsState()
@@ -96,6 +97,7 @@ fun ReadingScreen(
                 fontSize = fontSize,
                 lineHeight = lineHeight,
                 readingTheme = readingTheme,
+                targetHeading = targetHeading,
                 // Only offer "resume" if the saved progress belongs to THIS chapter
                 // (otherwise it's stale progress from a different chapter).
                 savedScrollFraction = readingProgress
@@ -230,6 +232,7 @@ private fun ReadingContent(
     fontSize: Float,
     lineHeight: Float,
     readingTheme: ReadingTheme,
+    targetHeading: String?,
     savedScrollFraction: Float?,
     onScrollProgressChanged: (Float) -> Unit,
     onLeaveScreen: (Float) -> Unit,
@@ -294,6 +297,22 @@ private fun ReadingContent(
     // First-occurrence lookup: ToC entry text -> its headingKey (occurrence 0).
     val tocEntryToHeadingKey = remember(parsedChapter) {
         parsedChapter.tocEntries.associateWith { ChapterContentParser.headingKey(it, 0) }
+    }
+
+    // Auto-scroll to a specific heading when opened from Home's "sub-sections"
+    // list or the in-Reading ToC's "open in a new instance" path. Runs once
+    // per (chapter, targetHeading) pair — if the heading text doesn't match
+    // anything in this chapter's confirmed ToC (e.g. stale/edited JSON), it
+    // simply does nothing and the screen opens at the top as normal.
+    LaunchedEffect(chapter.chapterNo, targetHeading) {
+        if (targetHeading.isNullOrBlank()) return@LaunchedEffect
+        val headingKey = tocEntryToHeadingKey[targetHeading] ?: return@LaunchedEffect
+        val targetIndex = headingIndexMap[headingKey] ?: return@LaunchedEffect
+        // Wait a frame so the LazyColumn has laid out its items before we
+        // try to scroll — scrolling immediately on first composition can
+        // be a no-op if layoutInfo isn't ready yet.
+        kotlinx.coroutines.delay(50)
+        listState.scrollToItem(targetIndex)
     }
 
     // Approximate scroll fraction from item position — cheap and stable,
