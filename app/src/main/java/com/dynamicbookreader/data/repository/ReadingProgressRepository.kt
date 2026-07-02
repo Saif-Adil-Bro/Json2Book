@@ -83,7 +83,9 @@ class ReadingProgressRepository(context: Context) {
 
     /** Map of chapterNo -> scrollFraction (0f..1f), for every chapter with any saved progress. */
     val perChapterProgress: Flow<Map<Int, Float>> = appContext.progressDataStore.data.map { prefs ->
-        decodeMap(prefs[KEY_PER_CHAPTER_MAP]).mapValues { it.value.scrollFraction }
+        decodeMap(prefs[KEY_PER_CHAPTER_MAP])
+            .mapNotNull { (key, entry) -> key.toIntOrNull()?.let { it to entry.scrollFraction } }
+            .toMap()
     }
 
     /**

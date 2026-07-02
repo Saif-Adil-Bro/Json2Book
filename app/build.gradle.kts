@@ -85,12 +85,15 @@ dependencies {
     
     // Splash Screen API
     implementation(libs.androidx.core.splashscreen)
+
+    // Classic Material Components — required for the XML `Theme.Material3.*`
+    // styles used in res/values/themes.xml (separate from Compose Material3,
+    // which only provides Kotlin/Compose APIs, not XML theme resources).
+    implementation(libs.material.components)
     
     // DataStore (persist reading preferences)
     implementation(libs.androidx.datastore.preferences)
-    // Google Material Components
-    implementation("com.google.android.material:material:1.11.0")
-
+    
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
