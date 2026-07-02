@@ -12,6 +12,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 private val Context.progressDataStore: DataStore<Preferences> by preferencesDataStore(
@@ -103,7 +105,10 @@ class ReadingProgressRepository(context: Context) {
             // Per-chapter map
             val current = decodeMap(prefs[KEY_PER_CHAPTER_MAP]).toMutableMap()
             current[chapterNo.toString()] = ChapterProgressEntry(clamped, now)
-            prefs[KEY_PER_CHAPTER_MAP] = json.encodeToString(current)
+            prefs[KEY_PER_CHAPTER_MAP] = json.encodeToString(
+                MapSerializer(String.serializer(), ChapterProgressEntry.serializer()),
+                current
+            )
         }
     }
 
@@ -121,7 +126,10 @@ class ReadingProgressRepository(context: Context) {
     private fun decodeMap(raw: String?): Map<String, ChapterProgressEntry> {
         if (raw.isNullOrBlank()) return emptyMap()
         return try {
-            json.decodeFromString(raw)
+            json.decodeFromString(
+                MapSerializer(String.serializer(), ChapterProgressEntry.serializer()),
+                raw
+            )
         } catch (e: Exception) {
             // Corrupted/old-format data should never crash the app — just
             // treat it as empty and let saves overwrite it going forward.

@@ -88,8 +88,7 @@ dependencies {
     
     // DataStore (persist reading preferences)
     implementation(libs.androidx.datastore.preferences)
-    // Google Material Components
-    implementation("com.google.android.material:material:1.11.0")
+    
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
