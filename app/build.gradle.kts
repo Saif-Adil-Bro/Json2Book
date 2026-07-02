@@ -86,12 +86,11 @@ dependencies {
     // Splash Screen API
     implementation(libs.androidx.core.splashscreen)
     
+    // DataStore (persist reading preferences)
+    implementation(libs.androidx.datastore.preferences)
     // Google Material Components
     implementation("com.google.android.material:material:1.11.0")
 
-    
-    // DataStore (persist reading preferences)
-    implementation(libs.androidx.datastore.preferences)
     
     // Testing
     testImplementation(libs.junit)

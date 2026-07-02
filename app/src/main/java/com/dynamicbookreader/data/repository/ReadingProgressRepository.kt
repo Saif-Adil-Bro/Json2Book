@@ -7,16 +7,20 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 private val Context.progressDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "reading_progress"
 )
 
 /**
- * Represents how far the user has read.
+ * Represents how far the user has read (the single most-recent chapter —
+ * used for the Home screen's "continue reading" shortcut card).
  *
  * @param chapterNo last-opened chapter number, or null if nothing read yet
  * @param scrollFraction 0f..1f — how far down that chapter the user had scrolled
@@ -33,21 +37,36 @@ data class ReadingProgress(
     val hasProgress: Boolean get() = chapterNo != null
 }
 
+/** Serializable per-chapter progress entry, stored in a JSON-encoded map. */
+@Serializable
+private data class ChapterProgressEntry(
+    val scrollFraction: Float,
+    val updatedAtMillis: Long
+)
+
 /**
- * Persists "last read" position so the user can jump straight back to
- * where they left off — independent of [ReadingPreferencesRepository],
- * which only stores display preferences (font, theme, etc).
+ * Persists reading position — both a single "last read anywhere" slot (for
+ * the Home screen's continue-reading shortcut) and per-chapter progress (so
+ * every chapter card on Home can show its own progress ring), independent
+ * of [ReadingPreferencesRepository], which only stores display preferences
+ * (font, theme, etc).
  */
 class ReadingProgressRepository(context: Context) {
 
     private val appContext = context.applicationContext
+    private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
         private val KEY_CHAPTER_NO = intPreferencesKey("progress_chapter_no")
         private val KEY_SCROLL_FRACTION = floatPreferencesKey("progress_scroll_fraction")
-        private val KEY_CHAPTER_TITLE = androidx.datastore.preferences.core.stringPreferencesKey("progress_chapter_title")
+        private val KEY_CHAPTER_TITLE = stringPreferencesKey("progress_chapter_title")
         private val KEY_UPDATED_AT = longPreferencesKey("progress_updated_at")
+
+        /** JSON-encoded Map<String /* chapterNo */, ChapterProgressEntry>. */
+        private val KEY_PER_CHAPTER_MAP = stringPreferencesKey("progress_per_chapter_json")
     }
+
+    // ── Single "last read" slot (continue-reading shortcut) ──────────────────
 
     val readingProgress: Flow<ReadingProgress> = appContext.progressDataStore.data.map { prefs ->
         ReadingProgress(
@@ -58,16 +77,33 @@ class ReadingProgressRepository(context: Context) {
         )
     }
 
+    // ── Per-chapter progress map (Home screen progress rings) ────────────────
+
+    /** Map of chapterNo -> scrollFraction (0f..1f), for every chapter with any saved progress. */
+    val perChapterProgress: Flow<Map<Int, Float>> = appContext.progressDataStore.data.map { prefs ->
+        decodeMap(prefs[KEY_PER_CHAPTER_MAP]).mapValues { it.value.scrollFraction }
+    }
+
     /**
-     * Saves the current reading position. Called periodically (debounced)
-     * while scrolling the Reading screen, and once more when leaving it.
+     * Saves the current reading position — updates both the single
+     * "last read" slot and this chapter's entry in the per-chapter map.
+     * Called periodically (debounced) while scrolling the Reading screen,
+     * and once more when leaving it.
      */
     suspend fun saveProgress(chapterNo: Int, chapterTitle: String, scrollFraction: Float) {
+        val clamped = scrollFraction.coerceIn(0f, 1f)
+        val now = System.currentTimeMillis()
         appContext.progressDataStore.edit { prefs ->
+            // Single-slot "last read"
             prefs[KEY_CHAPTER_NO] = chapterNo
             prefs[KEY_CHAPTER_TITLE] = chapterTitle
-            prefs[KEY_SCROLL_FRACTION] = scrollFraction.coerceIn(0f, 1f)
-            prefs[KEY_UPDATED_AT] = System.currentTimeMillis()
+            prefs[KEY_SCROLL_FRACTION] = clamped
+            prefs[KEY_UPDATED_AT] = now
+
+            // Per-chapter map
+            val current = decodeMap(prefs[KEY_PER_CHAPTER_MAP]).toMutableMap()
+            current[chapterNo.toString()] = ChapterProgressEntry(clamped, now)
+            prefs[KEY_PER_CHAPTER_MAP] = json.encodeToString(current)
         }
     }
 
@@ -78,6 +114,18 @@ class ReadingProgressRepository(context: Context) {
             prefs.remove(KEY_SCROLL_FRACTION)
             prefs.remove(KEY_CHAPTER_TITLE)
             prefs.remove(KEY_UPDATED_AT)
+            prefs.remove(KEY_PER_CHAPTER_MAP)
+        }
+    }
+
+    private fun decodeMap(raw: String?): Map<String, ChapterProgressEntry> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return try {
+            json.decodeFromString(raw)
+        } catch (e: Exception) {
+            // Corrupted/old-format data should never crash the app — just
+            // treat it as empty and let saves overwrite it going forward.
+            emptyMap()
         }
     }
 }

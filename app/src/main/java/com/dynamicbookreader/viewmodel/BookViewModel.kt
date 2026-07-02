@@ -143,6 +143,10 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
             ReadingProgress(chapterNo = null, scrollFraction = 0f, chapterTitle = null, updatedAtMillis = 0L)
         )
 
+    /** chapterNo -> scrollFraction (0f..1f) for every chapter with any saved progress. Powers per-card progress rings on Home. */
+    val perChapterProgress: StateFlow<Map<Int, Float>> = progressRepository.perChapterProgress
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     // Debounce scroll-position saves so we don't hammer DataStore on every pixel.
     private var progressSaveJob: Job? = null
 

@@ -243,7 +243,13 @@ private fun ReadingContent(
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsPanelVisible by remember { mutableStateOf(false) }
     var tocExpanded by remember { mutableStateOf(true) }
+    var subtitleExpanded by remember { mutableStateOf(false) }
     var selectedFootnoteKey by remember { mutableStateOf<String?>(null) }
+
+    val subtitleRotation by animateFloatAsState(
+        targetValue = if (subtitleExpanded) 180f else 0f,
+        label = "subtitle_chevron_rotation"
+    )
 
     // Quick key -> text lookup for footnotes defined on this chapter.
     val footnoteLookup = remember(chapter.chapterNo) {
@@ -329,19 +335,32 @@ private fun ReadingContent(
             listState.firstVisibleItemIndex == 0 &&
             listState.firstVisibleItemScrollOffset == 0
 
+    var activeSelection by remember { mutableStateOf<androidx.compose.foundation.text.selection.Selection?>(null) }
+    val currentSelection by rememberUpdatedState(activeSelection)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
-            .clickable(
-                indication = null,
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-            ) {
-                if (!settingsPanelVisible) controlsVisible = !controlsVisible
+            .pointerInput(settingsPanelVisible) {
+                detectTapGestures {
+                    if (currentSelection != null) {
+                        // This tap's job was to clear the active selection
+                        // (SelectionContainer below already did that via
+                        // onSelectionChange, if the tap landed on its
+                        // content). Don't also toggle controls.
+                        activeSelection = null
+                    } else if (!settingsPanelVisible) {
+                        controlsVisible = !controlsVisible
+                    }
+                }
             }
     ) {
         // ── Lazily-rendered reading content (wrapped once for cross-paragraph selection) ──
-        SelectionContainer {
+        SelectionContainer(
+            selection = activeSelection,
+            onSelectionChange = { activeSelection = it }
+        ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -387,15 +406,42 @@ private fun ReadingContent(
                             )
                         )
                         if (chapter.subtitle.isNotBlank()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = chapter.subtitle,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = (fontSize - 2).coerceAtLeast(12f).sp,
-                                    lineHeight = (fontSize + 4).sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(Modifier.height(8.dp))
+                            DisableSelection {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable { subtitleExpanded = !subtitleExpanded }
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "সংক্ষিপ্ত বিবরণ",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ExpandMore,
+                                        contentDescription = if (subtitleExpanded) "সংক্ষিপ্ত করুন" else "বিস্তারিত দেখুন",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .rotate(subtitleRotation)
+                                    )
+                                }
+                            }
+                            AnimatedVisibility(visible = subtitleExpanded) {
+                                Text(
+                                    text = chapter.subtitle,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = (fontSize - 2).coerceAtLeast(12f).sp,
+                                        lineHeight = (fontSize + 4).sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
                         }
                         Spacer(Modifier.height(if (hasToc) 16.dp else 24.dp))
                     }
