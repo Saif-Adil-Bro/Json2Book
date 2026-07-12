@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
@@ -66,6 +67,9 @@ class ReadingProgressRepository(context: Context) {
 
         /** JSON-encoded Map<String /* chapterNo */, ChapterProgressEntry>. */
         private val KEY_PER_CHAPTER_MAP = stringPreferencesKey("progress_per_chapter_json")
+
+        /** JSON-encoded Map<String /* chapterNo */, List<String /* headingKey */>>. */
+        private val KEY_READ_HEADINGS_MAP = stringPreferencesKey("progress_read_headings_json")
     }
 
     // ── Single "last read" slot (continue-reading shortcut) ──────────────────
@@ -86,6 +90,37 @@ class ReadingProgressRepository(context: Context) {
         decodeMap(prefs[KEY_PER_CHAPTER_MAP])
             .mapNotNull { (key, entry) -> key.toIntOrNull()?.let { it to entry.scrollFraction } }
             .toMap()
+    }
+
+    // ── Per-chapter read-heading tracking (Home screen sub-section checkmarks) ──
+
+    /**
+     * Map of chapterNo -> set of headingKeys the user has scrolled past while
+     * reading that chapter. Powers the read/unread icon next to each
+     * sub-section in the Home screen's expanded chapter card.
+     */
+    val perChapterReadHeadings: Flow<Map<Int, Set<String>>> = appContext.progressDataStore.data.map { prefs ->
+        decodeHeadingsMap(prefs[KEY_READ_HEADINGS_MAP])
+    }
+
+    /**
+     * Marks a single heading as "read" for the given chapter — called from
+     * the Reading screen once the user has scrolled past that heading's
+     * section. Merges into any existing read-set for the chapter rather
+     * than overwriting it, and is safe to call repeatedly for the same
+     * heading (idempotent).
+     */
+    suspend fun markHeadingRead(chapterNo: Int, headingKey: String) {
+        appContext.progressDataStore.edit { prefs ->
+            val current = decodeHeadingsMap(prefs[KEY_READ_HEADINGS_MAP]).toMutableMap()
+            val existingSet = current[chapterNo] ?: emptySet()
+            if (headingKey in existingSet) return@edit  // no-op, already recorded
+            current[chapterNo] = existingSet + headingKey
+            prefs[KEY_READ_HEADINGS_MAP] = json.encodeToString(
+                MapSerializer(Int.serializer(), SetSerializer(String.serializer())),
+                current
+            )
+        }
     }
 
     /**
@@ -122,6 +157,7 @@ class ReadingProgressRepository(context: Context) {
             prefs.remove(KEY_CHAPTER_TITLE)
             prefs.remove(KEY_UPDATED_AT)
             prefs.remove(KEY_PER_CHAPTER_MAP)
+            prefs.remove(KEY_READ_HEADINGS_MAP)
         }
     }
 
@@ -135,6 +171,18 @@ class ReadingProgressRepository(context: Context) {
         } catch (e: Exception) {
             // Corrupted/old-format data should never crash the app — just
             // treat it as empty and let saves overwrite it going forward.
+            emptyMap()
+        }
+    }
+
+    private fun decodeHeadingsMap(raw: String?): Map<Int, Set<String>> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return try {
+            json.decodeFromString(
+                MapSerializer(Int.serializer(), SetSerializer(String.serializer())),
+                raw
+            )
+        } catch (e: Exception) {
             emptyMap()
         }
     }

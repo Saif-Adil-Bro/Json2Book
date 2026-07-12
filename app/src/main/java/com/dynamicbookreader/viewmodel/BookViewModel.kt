@@ -147,6 +147,17 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     val perChapterProgress: StateFlow<Map<Int, Float>> = progressRepository.perChapterProgress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** chapterNo -> Set of headingKeys the user has scrolled past. Powers read/unread icons on Home sub-section list. */
+    val perChapterReadHeadings: StateFlow<Map<Int, Set<String>>> = progressRepository.perChapterReadHeadings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Called from ReadingScreen when the user scrolls past a heading section. */
+    fun markHeadingRead(chapterNo: Int, headingKey: String) {
+        viewModelScope.launch {
+            progressRepository.markHeadingRead(chapterNo, headingKey)
+        }
+    }
+
     // Debounce scroll-position saves so we don't hammer DataStore on every pixel.
     private var progressSaveJob: Job? = null
 

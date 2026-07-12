@@ -13,11 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -62,6 +62,7 @@ fun HomeScreen(
     val authorState by viewModel.authorUiState.collectAsState()
     val readingProgress by viewModel.readingProgress.collectAsState()
     val perChapterProgress by viewModel.perChapterProgress.collectAsState()
+    val perChapterReadHeadings by viewModel.perChapterReadHeadings.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -121,6 +122,7 @@ fun HomeScreen(
                                 chapter = chapter,
                                 progressFraction = perChapterProgress[chapter.chapterNo] ?: 0f,
                                 isLastRead = chapter.chapterNo == readingProgress.chapterNo,
+                                readHeadingKeys = perChapterReadHeadings[chapter.chapterNo] ?: emptySet(),
                                 onClick = { onChapterClick(chapter) },
                                 onSubheadingClick = { headingText ->
                                     onChapterSubheadingClick(chapter, headingText)
@@ -358,6 +360,7 @@ private fun ChapterCard(
     chapter: Chapter,
     progressFraction: Float,
     isLastRead: Boolean = false,
+    readHeadingKeys: Set<String> = emptySet(),
     onClick: () -> Unit,
     onSubheadingClick: (headingText: String) -> Unit
 ) {
@@ -593,6 +596,7 @@ private fun ChapterCard(
                         .padding(vertical = 4.dp)
                 ) {
                     subheadings.forEach { entry ->
+                        val isRead = readHeadingKeys.contains(ChapterContentParser.headingKey(entry, 0))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -601,9 +605,9 @@ private fun ChapterCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CheckCircleOutline,
-                                contentDescription = null,
-                                tint = onContainerColor.copy(alpha = 0.5f),
+                                imageVector = if (isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = if (isRead) "পঠিত" else "অপঠিত",
+                                tint = if (isRead) Color(0xFF2E7D32) else onContainerColor.copy(alpha = 0.35f),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(Modifier.width(10.dp))

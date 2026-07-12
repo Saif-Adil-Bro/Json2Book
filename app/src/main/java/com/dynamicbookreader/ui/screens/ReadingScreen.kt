@@ -109,6 +109,9 @@ fun ReadingScreen(
                 onLeaveScreen = { fraction ->
                     viewModel.saveReadingProgressNow(chapterNo, state.chapter.title, fraction)
                 },
+                onMarkHeadingRead = { headingKey ->
+                    viewModel.markHeadingRead(chapterNo, headingKey)
+                },
                 onFontIncrease = { viewModel.increaseFontSize() },
                 onFontDecrease = { viewModel.decreaseFontSize() },
                 onLineHeightIncrease = { viewModel.increaseLineHeight() },
@@ -236,6 +239,7 @@ private fun ReadingContent(
     savedScrollFraction: Float?,
     onScrollProgressChanged: (Float) -> Unit,
     onLeaveScreen: (Float) -> Unit,
+    onMarkHeadingRead: (String) -> Unit,
     onFontIncrease: () -> Unit,
     onFontDecrease: () -> Unit,
     onLineHeightIncrease: () -> Unit,
@@ -339,6 +343,42 @@ private fun ReadingContent(
 
     LaunchedEffect(currentFraction) {
         onScrollProgressChanged(currentFraction)
+    }
+
+    // ── Per-heading read tracking ─────────────────────────────────────────
+    // A heading counts as "read" once the user has scrolled past its
+    // section (i.e. the next heading — or the end of the chapter — has
+    // become the current position). We derive the set of "passed" heading
+    // indices from firstVisibleItemIndex, then report any newly-passed
+    // ones exactly once via onMarkHeadingRead.
+    val sortedHeadingEntries = remember(headingIndexMap) {
+        headingIndexMap.entries.sortedBy { it.value }
+    }
+    val alreadyReported = remember(chapter.chapterNo) { mutableSetOf<String>() }
+
+    LaunchedEffect(listState, sortedHeadingEntries) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { currentIndex ->
+                // A heading at itemIndex X is "passed" once the reader has
+                // scrolled to or beyond the NEXT heading's item index (or,
+                // for the last heading, simply been visited at all — since
+                // there's no "next" boundary to confirm they moved past it,
+                // reaching it is treated as sufficient for the last section).
+                for (i in sortedHeadingEntries.indices) {
+                    val (key, index) = sortedHeadingEntries[i]
+                    if (key in alreadyReported) continue
+                    val nextIndex = sortedHeadingEntries.getOrNull(i + 1)?.value
+                    val passed = if (nextIndex != null) {
+                        currentIndex >= nextIndex
+                    } else {
+                        currentIndex >= index
+                    }
+                    if (passed) {
+                        alreadyReported.add(key)
+                        onMarkHeadingRead(key)
+                    }
+                }
+            }
     }
 
     // Save immediately when this composable leaves composition (back press, etc).
