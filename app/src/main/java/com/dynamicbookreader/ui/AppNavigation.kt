@@ -48,7 +48,13 @@ fun AppNavigation(
     DynamicBookReaderTheme(readingTheme = readingTheme) {
         Scaffold(
             bottomBar = {
-                if (showBottomNav) {
+                AnimatedVisibility(
+                    visible = showBottomNav,
+                    enter = fadeIn(animationSpec = tween(200)) +
+                            slideInVertically(animationSpec = tween(200)) { it },
+                    exit = fadeOut(animationSpec = tween(150)) +
+                            slideOutVertically(animationSpec = tween(150)) { it }
+                ) {
                     BottomNavBar(
                         currentRoute = currentRoute,
                         onTabSelected = { tab ->

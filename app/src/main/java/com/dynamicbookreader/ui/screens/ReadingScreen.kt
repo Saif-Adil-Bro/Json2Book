@@ -701,7 +701,7 @@ private fun ReadingContent(
 
         // ── Resume-position shortcut ──────────────────────────────────────────
         AnimatedVisibility(
-            visible = showResumeButton,
+            visible = showResumeButton && !settingsPanelVisible,
             enter = fadeIn(tween(250)) + scaleIn(tween(250), initialScale = 0.8f),
             exit = fadeOut(tween(150)),
             modifier = Modifier
@@ -743,7 +743,7 @@ private fun ReadingContent(
 
         // ── Percentage read badge (bottom-left, subtle) ───────────────────────
         AnimatedVisibility(
-            visible = controlsVisible && totalItemCount > 1,
+            visible = controlsVisible && totalItemCount > 1 && !settingsPanelVisible,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(200)),
             modifier = Modifier
