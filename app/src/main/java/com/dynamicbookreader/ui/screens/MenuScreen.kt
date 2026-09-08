@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuScreen(
+    onBookmarksClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onContactClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
@@ -39,11 +40,17 @@ fun MenuScreen(
                 .padding(padding)
                 .padding(vertical = 8.dp)
         ) {
-            MenuSectionLabel("সাধারণ")
+            MenuSectionLabel("আমার লাইব্রেরি ও পাঠ")
+            MenuItemRow(
+                icon = Icons.Default.BookmarkBorder,
+                title = "বুকমার্ক ও নোটস",
+                subtitle = "আপনার সংরক্ষিত অনুচ্ছেদ ও ব্যক্তিগত নোট",
+                onClick = onBookmarksClick
+            )
             MenuItemRow(
                 icon = Icons.Default.Settings,
                 title = "সেটিংস",
-                subtitle = "পাঠ পছন্দ ও থিম নিয়ন্ত্রণ করুন",
+                subtitle = "পাঠ পছন্দ, ফন্ট ও থিম নিয়ন্ত্রণ করুন",
                 onClick = onSettingsClick
             )
 

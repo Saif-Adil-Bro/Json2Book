@@ -1,0 +1,6 @@
+{
+  "name": "Dynamic Book Reader",
+  "description": "A dynamic book reader application with Bengali and English support, customizable reading preferences, progress tracking, and chapter navigation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

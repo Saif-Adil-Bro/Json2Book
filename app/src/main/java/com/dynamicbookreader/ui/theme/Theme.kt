@@ -14,8 +14,9 @@ enum class ReadingTheme(
     val emoji: String
 ) {
     DAY("দিন", "☀️"),
+    SEPIA("সেপিয়া", "📜"),
     NIGHT("রাত", "🌙"),
-    SEPIA("সেপিয়া", "📜")
+    AMOLED("ওলেড", "🌑")
 }
 
 // ── Color Palette ─────────────────────────────────────────────────────────────
@@ -45,6 +46,12 @@ private val SepiaBackground = Color(0xFFF4EDDA)       // classic sepia parchment
 private val SepiaOnBackground = Color(0xFF3B2E1A)     // dark warm brown text
 private val SepiaSurface = Color(0xFFFDF6E3)
 private val SepiaSurfaceVariant = Color(0xFFE8D8B0)
+
+// AMOLED True Black theme colours
+private val AmoledBackground = Color(0xFF000000)      // pitch black for battery saving
+private val AmoledOnBackground = Color(0xFFE2E2E2)    // soft readable white
+private val AmoledSurface = Color(0xFF121212)
+private val AmoledSurfaceVariant = Color(0xFF1E1E1E)
 
 // ── ColorSchemes ──────────────────────────────────────────────────────────────
 
@@ -92,12 +99,27 @@ private val SepiaColorScheme = lightColorScheme(
     onSurfaceVariant = Color(0xFF5A4130)
 )
 
+private val AmoledColorScheme = darkColorScheme(
+    primary = Color(0xFF64B5F6),            // bright ice blue
+    onPrimary = Color(0xFF002244),
+    primaryContainer = Color(0xFF1A334D),
+    onPrimaryContainer = Color(0xFFB3E5FC),
+    secondary = Color(0xFFFFB74D),
+    background = AmoledBackground,
+    onBackground = AmoledOnBackground,
+    surface = AmoledSurface,
+    onSurface = AmoledOnBackground,
+    surfaceVariant = AmoledSurfaceVariant,
+    onSurfaceVariant = Color(0xFF9E9E9E)
+)
+
 // ── Theme selectors ───────────────────────────────────────────────────────────
 
 fun ReadingTheme.colorScheme(): ColorScheme = when (this) {
     ReadingTheme.DAY -> DayColorScheme
     ReadingTheme.NIGHT -> NightColorScheme
     ReadingTheme.SEPIA -> SepiaColorScheme
+    ReadingTheme.AMOLED -> AmoledColorScheme
 }
 
 // ── App-wide MaterialTheme wrapper ────────────────────────────────────────────

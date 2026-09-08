@@ -41,6 +41,7 @@ sealed class Screen(val route: String) {
     object AuthorDetail : Screen("author_detail")
 
     // ── Menu sub-pages ─────────────────────────────────────────────────────
+    object Bookmarks : Screen("menu/bookmarks")
     object Settings : Screen("menu/settings")
     object Contact : Screen("menu/contact")
     object PrivacyPolicy : Screen("menu/privacy")

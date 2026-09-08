@@ -1,19 +1,26 @@
 package com.dynamicbookreader.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,37 +29,40 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dynamicbookreader.data.model.Bookmark
 import com.dynamicbookreader.data.model.Chapter
+import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
+import com.dynamicbookreader.ui.theme.TextAlignOption
 import com.dynamicbookreader.utils.ChapterContentParser
 import com.dynamicbookreader.viewmodel.BookViewModel
 import com.dynamicbookreader.viewmodel.ChapterUiState
 import kotlinx.coroutines.launch
 
 /**
- * Distraction-free reading screen.
+ * Distraction-free, fully polished reading screen.
  *
- * Features:
- * – Loads the requested chapter via [BookViewModel.openChapter] and reacts
- *   to Loading / Success / Error states (cache makes this near-instant in
- *   the common case, but the states still cover cold-start / failure).
- * – Tap anywhere to show/hide controls (immersive reading).
- * – Font size A+/A− with live preview.
- * – Line height +/− adjustment.
- * – Day / Night / Sepia theme toggle.
- * – Smooth vertical scroll with a live progress bar.
- * – Reading position is saved (debounced) as the user scrolls, and a
- *   "resume" floating button jumps back to the last saved position.
- * – All settings + progress persist across sessions via DataStore.
+ * Core Reader Enhancements:
+ * – Dynamic typography with custom Font Families (Default, Serif, Sans, Monospace).
+ * – Text alignment selection (Justify, Left, Center).
+ * – Four distinct themes: Day, Sepia, Night, and AMOLED Pitch Black.
+ * – Keep Screen On / Wake Lock control.
+ * – Bookmarking & paragraph note management with instant Snackbar notifications.
+ * – Direct Quote / Chapter Excerpt sharing and copying.
+ * – Footnote popups with superscript annotations.
+ * – Table of contents navigation with live progress indicator.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,16 +76,29 @@ fun ReadingScreen(
     val fontSize by viewModel.fontSize.collectAsState()
     val lineHeight by viewModel.lineHeight.collectAsState()
     val readingTheme by viewModel.readingTheme.collectAsState()
+    val fontFamily by viewModel.fontFamily.collectAsState()
+    val textAlign by viewModel.textAlign.collectAsState()
+    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     val readingProgress by viewModel.readingProgress.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
 
-    // Trigger the chapter load once when this screen is shown for this chapterNo.
+    // Trigger chapter load
     LaunchedEffect(chapterNo) {
         viewModel.openChapter(chapterNo)
     }
 
-    // Clean up debounce job / reset state when leaving the screen.
+    // Clean up when leaving screen
     DisposableEffect(Unit) {
         onDispose { viewModel.clearChapterState() }
+    }
+
+    // Keep screen on control
+    val view = LocalView.current
+    DisposableEffect(keepScreenOn) {
+        view.keepScreenOn = keepScreenOn
+        onDispose {
+            view.keepScreenOn = false
+        }
     }
 
     when (val state = chapterState) {
@@ -97,9 +120,11 @@ fun ReadingScreen(
                 fontSize = fontSize,
                 lineHeight = lineHeight,
                 readingTheme = readingTheme,
+                fontFamily = fontFamily,
+                textAlign = textAlign,
+                keepScreenOn = keepScreenOn,
+                bookmarks = bookmarks,
                 targetHeading = targetHeading,
-                // Only offer "resume" if the saved progress belongs to THIS chapter
-                // (otherwise it's stale progress from a different chapter).
                 savedScrollFraction = readingProgress
                     .takeIf { it.chapterNo == chapterNo }
                     ?.scrollFraction,
@@ -112,11 +137,27 @@ fun ReadingScreen(
                 onMarkHeadingRead = { headingKey ->
                     viewModel.markHeadingRead(chapterNo, headingKey)
                 },
+                onAddBookmark = { snippet, note, fraction, paragraphIndex ->
+                    viewModel.addBookmark(
+                        chapterNo = chapterNo,
+                        chapterTitle = state.chapter.title,
+                        snippet = snippet,
+                        note = note,
+                        scrollFraction = fraction,
+                        paragraphIndex = paragraphIndex
+                    )
+                },
+                onDeleteBookmark = { bookmarkId ->
+                    viewModel.deleteBookmark(bookmarkId)
+                },
                 onFontIncrease = { viewModel.increaseFontSize() },
                 onFontDecrease = { viewModel.decreaseFontSize() },
                 onLineHeightIncrease = { viewModel.increaseLineHeight() },
                 onLineHeightDecrease = { viewModel.decreaseLineHeight() },
                 onThemeChange = { viewModel.setReadingTheme(it) },
+                onFontFamilyChange = { viewModel.setFontFamily(it) },
+                onTextAlignChange = { viewModel.setTextAlign(it) },
+                onKeepScreenOnChange = { viewModel.setKeepScreenOn(it) },
                 onBack = onBack
             )
         }
@@ -229,22 +270,32 @@ private fun ReadingErrorState(
 
 // ── Success state: full reading UI ──────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReadingContent(
     chapter: Chapter,
     fontSize: Float,
     lineHeight: Float,
     readingTheme: ReadingTheme,
+    fontFamily: ReadingFontFamily,
+    textAlign: TextAlignOption,
+    keepScreenOn: Boolean,
+    bookmarks: List<Bookmark>,
     targetHeading: String?,
     savedScrollFraction: Float?,
     onScrollProgressChanged: (Float) -> Unit,
     onLeaveScreen: (Float) -> Unit,
     onMarkHeadingRead: (String) -> Unit,
+    onAddBookmark: (snippet: String, note: String, fraction: Float, paragraphIndex: Int) -> Unit,
+    onDeleteBookmark: (String) -> Unit,
     onFontIncrease: () -> Unit,
     onFontDecrease: () -> Unit,
     onLineHeightIncrease: () -> Unit,
     onLineHeightDecrease: () -> Unit,
     onThemeChange: (ReadingTheme) -> Unit,
+    onFontFamilyChange: (ReadingFontFamily) -> Unit,
+    onTextAlignChange: (TextAlignOption) -> Unit,
+    onKeepScreenOnChange: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
@@ -252,44 +303,39 @@ private fun ReadingContent(
     var tocExpanded by remember { mutableStateOf(true) }
     var subtitleExpanded by remember { mutableStateOf(false) }
     var selectedFootnoteKey by remember { mutableStateOf<String?>(null) }
+    var selectedParagraphForAction by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    var showAddNoteDialogForParagraph by remember { mutableStateOf<Pair<Int, String>?>(null) }
+
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    val isChapterBookmarked = remember(bookmarks, chapter.chapterNo) {
+        bookmarks.any { it.chapterNo == chapter.chapterNo }
+    }
 
     val subtitleRotation by animateFloatAsState(
         targetValue = if (subtitleExpanded) 180f else 0f,
         label = "subtitle_chevron_rotation"
     )
 
-    // Quick key -> text lookup for footnotes defined on this chapter.
+    // Quick key -> text lookup for footnotes
     val footnoteLookup = remember(chapter.chapterNo) {
         chapter.footnotes.associateBy { it.key }
     }
 
-    // Parse once per chapter: splits content into paragraphs and — when
-    // detected — a confirmed table-of-contents block (see
-    // ChapterContentParser for the detection rule). If no ToC is found,
-    // tocEntries is empty and every line renders as a plain paragraph,
-    // identical to before.
     val parsedChapter = remember(chapter.chapterNo) {
         ChapterContentParser.parse(chapter.content, chapter.title)
     }
     val hasToc = parsedChapter.tocEntries.isNotEmpty()
-
-    // +3 synthetic items: header block, end marker, plus +1 for the ToC
-    // card when present.
     val totalItemCount = parsedChapter.blocks.size + 2 + (if (hasToc) 1 else 0)
 
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-
     val backgroundColor = MaterialTheme.colorScheme.background
     val textColor = MaterialTheme.colorScheme.onBackground
 
-    // Maps a heading's first-occurrence key to its LazyColumn item index,
-    // so tapping a ToC row can scroll straight to it. Built once per
-    // chapter parse — cheap, since it's just an index scan.
     val headingIndexMap = remember(parsedChapter) {
         val map = HashMap<String, Int>()
-        // Item 0 is the header block; ToC card (if present) is item 1;
-        // body blocks start right after.
         val bodyStartIndex = 1 + (if (hasToc) 1 else 0)
         parsedChapter.blocks.forEachIndexed { i, block ->
             if (block.headingKey != null && block.headingKey !in map) {
@@ -298,29 +344,19 @@ private fun ReadingContent(
         }
         map
     }
-    // First-occurrence lookup: ToC entry text -> its headingKey (occurrence 0).
+
     val tocEntryToHeadingKey = remember(parsedChapter) {
         parsedChapter.tocEntries.associateWith { ChapterContentParser.headingKey(it, 0) }
     }
 
-    // Auto-scroll to a specific heading when opened from Home's "sub-sections"
-    // list or the in-Reading ToC's "open in a new instance" path. Runs once
-    // per (chapter, targetHeading) pair — if the heading text doesn't match
-    // anything in this chapter's confirmed ToC (e.g. stale/edited JSON), it
-    // simply does nothing and the screen opens at the top as normal.
     LaunchedEffect(chapter.chapterNo, targetHeading) {
         if (targetHeading.isNullOrBlank()) return@LaunchedEffect
         val headingKey = tocEntryToHeadingKey[targetHeading] ?: return@LaunchedEffect
         val targetIndex = headingIndexMap[headingKey] ?: return@LaunchedEffect
-        // Wait a frame so the LazyColumn has laid out its items before we
-        // try to scroll — scrolling immediately on first composition can
-        // be a no-op if layoutInfo isn't ready yet.
         kotlinx.coroutines.delay(50)
         listState.scrollToItem(targetIndex)
     }
 
-    // Approximate scroll fraction from item position — cheap and stable,
-    // avoids needing exact pixel heights of variable-length paragraphs.
     val currentFraction by remember {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
@@ -329,8 +365,6 @@ private fun ReadingContent(
 
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
             if (lastVisible != null && lastVisible.index == total - 1) {
-                // Last item is at least partially visible — check if it's
-                // fully on-screen to report 100%, otherwise interpolate.
                 val viewportEnd = layoutInfo.viewportEndOffset
                 val itemBottom = lastVisible.offset + lastVisible.size
                 if (itemBottom <= viewportEnd) return@derivedStateOf 1f
@@ -345,12 +379,6 @@ private fun ReadingContent(
         onScrollProgressChanged(currentFraction)
     }
 
-    // ── Per-heading read tracking ─────────────────────────────────────────
-    // A heading counts as "read" once the user has scrolled past its
-    // section (i.e. the next heading — or the end of the chapter — has
-    // become the current position). We derive the set of "passed" heading
-    // indices from firstVisibleItemIndex, then report any newly-passed
-    // ones exactly once via onMarkHeadingRead.
     val sortedHeadingEntries = remember(headingIndexMap) {
         headingIndexMap.entries.sortedBy { it.value }
     }
@@ -359,11 +387,6 @@ private fun ReadingContent(
     LaunchedEffect(listState, sortedHeadingEntries) {
         snapshotFlow { listState.firstVisibleItemIndex }
             .collect { currentIndex ->
-                // A heading at itemIndex X is "passed" once the reader has
-                // scrolled to or beyond the NEXT heading's item index (or,
-                // for the last heading, simply been visited at all — since
-                // there's no "next" boundary to confirm they moved past it,
-                // reaching it is treated as sufficient for the last section).
                 for (i in sortedHeadingEntries.indices) {
                     val (key, index) = sortedHeadingEntries[i]
                     if (key in alreadyReported) continue
@@ -381,22 +404,15 @@ private fun ReadingContent(
             }
     }
 
-    // Save immediately when this composable leaves composition (back press, etc).
     DisposableEffect(Unit) {
         onDispose { onLeaveScreen(currentFraction) }
     }
 
-    // Whether to show the "resume" floating action button — only meaningful
-    // before the user has scrolled in this session, and only if there's a
-    // saved position worth jumping to.
     val showResumeButton = savedScrollFraction != null &&
             savedScrollFraction > 0.02f &&
             listState.firstVisibleItemIndex == 0 &&
             listState.firstVisibleItemScrollOffset == 0
 
-    // Bumping this key forces the SelectionContainer below to fully recompose,
-    // which is the standard way to clear its active text selection (there is
-    // no public API to imperatively clear a SelectionContainer's selection).
     var selectionResetKey by remember { mutableIntStateOf(0) }
 
     Box(
@@ -412,228 +428,240 @@ private fun ReadingContent(
                 }
             }
     ) {
-        // ── Lazily-rendered reading content (wrapped once for cross-paragraph selection) ──
-        // key(selectionResetKey): recreates SelectionContainer's subtree
-        // whenever the outer Box registers a tap, which clears any active
-        // text selection (SelectionContainer has no public imperative
-        // "clear selection" API, so recomposition-via-key is the
-        // recommended workaround).
         key(selectionResetKey) {
-        SelectionContainer {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = if (controlsVisible) 72.dp else 24.dp,
-                    bottom = if (controlsVisible) 100.dp else 40.dp,
-                    start = 20.dp,
-                    end = 20.dp
-                )
-            ) {
-                // Chapter number + title + optional subtitle/page range
-                item(key = "header") {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "অধ্যায় ${chapter.chapterNo}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (chapter.pageRange.isNotBlank()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text(
-                                        text = "পাতা ${chapter.pageRange}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = chapter.title,
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontSize = (fontSize + 4).sp,
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = (fontSize + 14).sp,
-                                color = textColor
-                            )
-                        )
-                        if (chapter.subtitle.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            DisableSelection {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .clickable { subtitleExpanded = !subtitleExpanded }
-                                        .padding(vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "সংক্ষিপ্ত বিবরণ",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.ExpandMore,
-                                        contentDescription = if (subtitleExpanded) "সংক্ষিপ্ত করুন" else "বিস্তারিত দেখুন",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .rotate(subtitleRotation)
-                                    )
-                                }
-                            }
-                            AnimatedVisibility(visible = subtitleExpanded) {
+            SelectionContainer {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = if (controlsVisible) 76.dp else 24.dp,
+                        bottom = if (controlsVisible) 100.dp else 40.dp,
+                        start = 20.dp,
+                        end = 20.dp
+                    )
+                ) {
+                    // Header item
+                    item(key = "header") {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = chapter.subtitle,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = (fontSize - 2).coerceAtLeast(12f).sp,
-                                        lineHeight = (fontSize + 4).sp
+                                    text = "অধ্যায় ${chapter.chapterNo}",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontFamily = fontFamily.fontFamily
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 6.dp)
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (chapter.pageRange.isNotBlank()) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text(
+                                            text = "পাতা ${chapter.pageRange}",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontFamily = fontFamily.fontFamily
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = chapter.title,
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontFamily = fontFamily.fontFamily,
+                                    fontSize = (fontSize + 4).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    lineHeight = (fontSize + 14).sp,
+                                    color = textColor
+                                )
+                            )
+                            if (chapter.subtitle.isNotBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                DisableSelection {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clickable { subtitleExpanded = !subtitleExpanded }
+                                            .padding(vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "সংক্ষিপ্ত বিবরণ",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontFamily = fontFamily.fontFamily
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.ExpandMore,
+                                            contentDescription = if (subtitleExpanded) "সংক্ষিপ্ত করুন" else "বিস্তারিত দেখুন",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .rotate(subtitleRotation)
+                                        )
+                                    }
+                                }
+                                AnimatedVisibility(visible = subtitleExpanded) {
+                                    Text(
+                                        text = chapter.subtitle,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontFamily = fontFamily.fontFamily,
+                                            fontSize = (fontSize - 2).coerceAtLeast(12f).sp,
+                                            lineHeight = (fontSize + 4).sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(if (hasToc) 16.dp else 24.dp))
+                        }
+                    }
+
+                    // Collapsible ToC
+                    if (hasToc) {
+                        item(key = "toc_card") {
+                            DisableSelection {
+                                TocCard(
+                                    entries = parsedChapter.tocEntries,
+                                    fontFamily = fontFamily,
+                                    expanded = tocExpanded,
+                                    onToggleExpanded = { tocExpanded = !tocExpanded },
+                                    onEntryClick = { entry ->
+                                        val headingKey = tocEntryToHeadingKey[entry]
+                                        val targetIndex = headingKey?.let { headingIndexMap[it] }
+                                        if (targetIndex != null) {
+                                            coroutineScope.launch {
+                                                listState.animateScrollToItem(targetIndex)
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.padding(bottom = 24.dp)
                                 )
                             }
                         }
-                        Spacer(Modifier.height(if (hasToc) 16.dp else 24.dp))
-                    }
-                }
-
-                // Collapsible table of contents (only when confirmed headings were found)
-                if (hasToc) {
-                    item(key = "toc_card") {
-                        DisableSelection {
-                            TocCard(
-                                entries = parsedChapter.tocEntries,
-                                expanded = tocExpanded,
-                                onToggleExpanded = { tocExpanded = !tocExpanded },
-                                onEntryClick = { entry ->
-                                    val headingKey = tocEntryToHeadingKey[entry]
-                                    val targetIndex = headingKey?.let { headingIndexMap[it] }
-                                    if (targetIndex != null) {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(targetIndex)
-                                        }
-                                    }
-                                },
+                    } else {
+                        item(key = "header_divider") {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                                thickness = 1.5.dp,
                                 modifier = Modifier.padding(bottom = 24.dp)
                             )
                         }
                     }
-                } else {
-                    item(key = "header_divider") {
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                            thickness = 1.5.dp,
-                            modifier = Modifier.padding(bottom = 24.dp)
-                        )
-                    }
-                }
 
-                // Main content: one lazy item per paragraph. Selection spans
-                // across items since the whole LazyColumn is wrapped in a
-                // single SelectionContainer above. Footnote markers render
-                // as clickable superscript numbers.
-                itemsIndexed(
-                    items = parsedChapter.blocks,
-                    key = { index, block -> block.headingKey ?: "para_$index" }
-                ) { _, block ->
-                    val isHeading = block.headingKey != null
-                    val baseStyle = if (isHeading) {
-                        MaterialTheme.typography.titleMedium.copy(
-                            fontSize = (fontSize + 1).sp,
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = (fontSize * lineHeight).sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = fontSize.sp,
-                            lineHeight = (fontSize * lineHeight).sp,
-                            color = textColor,
-                            textAlign = TextAlign.Justify
-                        )
-                    }
-
-                    val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
-
-                    if (!hasFootnotes) {
-                        // Fast path: no footnotes in this paragraph, render as plain Text.
-                        Text(
-                            text = block.plainText,
-                            style = baseStyle,
-                            modifier = Modifier.padding(
-                                top = if (isHeading) 8.dp else 0.dp,
-                                bottom = 16.dp
+                    // Paragraphs
+                    itemsIndexed(
+                        items = parsedChapter.blocks,
+                        key = { index, block -> block.headingKey ?: "para_$index" }
+                    ) { index, block ->
+                        val isHeading = block.headingKey != null
+                        val baseStyle = if (isHeading) {
+                            MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = fontFamily.fontFamily,
+                                fontSize = (fontSize + 1).sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = (fontSize * lineHeight).sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = textAlign.align
                             )
-                        )
-                    } else {
-                        val footnoteColor = MaterialTheme.colorScheme.primary
-                        val annotated = remember(block, footnoteColor) {
-                            buildAnnotatedString {
-                                block.segments.forEach { segment ->
-                                    when (segment) {
-                                        is ChapterContentParser.TextSegment.Plain ->
-                                            append(segment.text)
-                                        is ChapterContentParser.TextSegment.FootnoteRef -> {
-                                            pushStringAnnotation(
-                                                tag = "footnote",
-                                                annotation = segment.key
-                                            )
-                                            withStyle(
-                                                SpanStyle(
-                                                    color = footnoteColor,
-                                                    fontWeight = FontWeight.Bold,
-                                                    baselineShift = BaselineShift.Superscript,
-                                                    fontSize = (fontSize * 0.7f).sp
-                                                )
-                                            ) {
-                                                append("[${segment.displayNumber}]")
+                        } else {
+                            MaterialTheme.typography.bodyLarge.copy(
+                                fontFamily = fontFamily.fontFamily,
+                                fontSize = fontSize.sp,
+                                lineHeight = (fontSize * lineHeight).sp,
+                                color = textColor,
+                                textAlign = textAlign.align
+                            )
+                        }
+
+                        val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    top = if (isHeading) 8.dp else 0.dp,
+                                    bottom = 16.dp
+                                )
+                                .pointerInput(block.plainText) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            selectedParagraphForAction = Pair(index, block.plainText)
+                                        }
+                                    )
+                                }
+                        ) {
+                            if (!hasFootnotes) {
+                                Text(
+                                    text = block.plainText,
+                                    style = baseStyle
+                                )
+                            } else {
+                                val footnoteColor = MaterialTheme.colorScheme.primary
+                                val annotated = remember(block, footnoteColor, fontSize) {
+                                    buildAnnotatedString {
+                                        block.segments.forEach { segment ->
+                                            when (segment) {
+                                                is ChapterContentParser.TextSegment.Plain ->
+                                                    append(segment.text)
+                                                is ChapterContentParser.TextSegment.FootnoteRef -> {
+                                                    pushStringAnnotation(
+                                                        tag = "footnote",
+                                                        annotation = segment.key
+                                                    )
+                                                    withStyle(
+                                                        SpanStyle(
+                                                            color = footnoteColor,
+                                                            fontWeight = FontWeight.Bold,
+                                                            baselineShift = BaselineShift.Superscript,
+                                                            fontSize = (fontSize * 0.7f).sp
+                                                        )
+                                                    ) {
+                                                        append("[${segment.displayNumber}]")
+                                                    }
+                                                    pop()
+                                                }
                                             }
-                                            pop()
                                         }
                                     }
                                 }
+                                FootnoteAwareText(
+                                    text = annotated,
+                                    style = baseStyle,
+                                    onFootnoteClick = { key -> selectedFootnoteKey = key }
+                                )
                             }
                         }
-                        FootnoteAwareText(
-                            text = annotated,
-                            style = baseStyle,
-                            onFootnoteClick = { key -> selectedFootnoteKey = key },
-                            modifier = Modifier.padding(
-                                top = if (isHeading) 8.dp else 0.dp,
-                                bottom = 16.dp
-                            )
-                        )
                     }
-                }
 
-                // End-of-chapter marker
-                item(key = "end_marker") {
-                    Column {
-                        Spacer(Modifier.height(32.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = "﴿ সমাপ্ত ﴾",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    // End marker
+                    item(key = "end_marker") {
+                        Column {
+                            Spacer(Modifier.height(32.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "﴿ সমাপ্ত ﴾",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = fontFamily.fontFamily
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-        } // close key(selectionResetKey)
 
         // ── Top App Bar ─────────────────────────────────────────────────────
         AnimatedVisibility(
@@ -651,7 +679,7 @@ private fun ReadingContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
@@ -661,15 +689,58 @@ private fun ReadingContent(
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
+
                     Text(
-                        text = chapter.title.take(40) + if (chapter.title.length > 40) "…" else "",
+                        text = chapter.title,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+
+                    // Quick Bookmark Toggle Button
+                    IconButton(
+                        onClick = {
+                            val firstPara = parsedChapter.blocks.firstOrNull()?.plainText ?: chapter.title
+                            onAddBookmark(firstPara.take(200), "", currentFraction, 0)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("অধ্যায়টি বুকমার্কে সংরক্ষিত হয়েছে")
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isChapterBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = "বুকমার্ক করুন",
+                            tint = if (isChapterBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Share chapter excerpt
+                    IconButton(
+                        onClick = {
+                            val excerpt = parsedChapter.blocks.firstOrNull()?.plainText?.take(300) ?: ""
+                            val shareText = "📖 ${chapter.title} (অধ্যায় ${chapter.chapterNo})\n\n\"$excerpt...\"\n\n— Dynamic Book Reader"
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "অধ্যায় শেয়ার করুন"))
+                        }
+                    ) {
+                        Icon(
+                            Icons.Outlined.Share,
+                            contentDescription = "শেয়ার করুন",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Settings Button
                     IconButton(onClick = { settingsPanelVisible = !settingsPanelVisible }) {
                         Icon(
-                            Icons.Default.TextFields,
+                            Icons.Default.Tune,
                             contentDescription = "পাঠ সেটিংস",
                             tint = if (settingsPanelVisible) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurface
@@ -679,27 +750,7 @@ private fun ReadingContent(
             }
         }
 
-        // ── Settings Panel (bottom sheet style) ─────────────────────────────
-        AnimatedVisibility(
-            visible = settingsPanelVisible,
-            enter = fadeIn(tween(200)) + slideInVertically(tween(250)) { it },
-            exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            ReadingSettingsPanel(
-                fontSize = fontSize,
-                lineHeight = lineHeight,
-                currentTheme = readingTheme,
-                onFontIncrease = onFontIncrease,
-                onFontDecrease = onFontDecrease,
-                onLineHeightIncrease = onLineHeightIncrease,
-                onLineHeightDecrease = onLineHeightDecrease,
-                onThemeChange = onThemeChange,
-                onDismiss = { settingsPanelVisible = false }
-            )
-        }
-
-        // ── Resume-position shortcut ──────────────────────────────────────────
+        // ── Resume Position FAB ──────────────────────────────────────────────
         AnimatedVisibility(
             visible = showResumeButton && !settingsPanelVisible,
             enter = fadeIn(tween(250)) + scaleIn(tween(250), initialScale = 0.8f),
@@ -734,14 +785,14 @@ private fun ReadingContent(
                 progress = { currentFraction },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp)
+                    .height(3.dp)
                     .align(Alignment.TopCenter),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = Color.Transparent
             )
         }
 
-        // ── Percentage read badge (bottom-left, subtle) ───────────────────────
+        // ── Percentage read badge ────────────────────────────────────────────
         AnimatedVisibility(
             visible = controlsVisible && totalItemCount > 1 && !settingsPanelVisible,
             enter = fadeIn(tween(200)),
@@ -763,9 +814,43 @@ private fun ReadingContent(
                 )
             }
         }
+
+        // ── Snackbar Host ───────────────────────────────────────────────────
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
+        )
+
+        // ── Reading Settings Panel ──────────────────────────────────────────
+        AnimatedVisibility(
+            visible = settingsPanelVisible,
+            enter = fadeIn(tween(200)) + slideInVertically(tween(250)) { it },
+            exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            ReadingSettingsPanel(
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                currentTheme = readingTheme,
+                currentFontFamily = fontFamily,
+                currentTextAlign = textAlign,
+                keepScreenOn = keepScreenOn,
+                onFontIncrease = onFontIncrease,
+                onFontDecrease = onFontDecrease,
+                onLineHeightIncrease = onLineHeightIncrease,
+                onLineHeightDecrease = onLineHeightDecrease,
+                onThemeChange = onThemeChange,
+                onFontFamilyChange = onFontFamilyChange,
+                onTextAlignChange = onTextAlignChange,
+                onKeepScreenOnChange = onKeepScreenOnChange,
+                onDismiss = { settingsPanelVisible = false }
+            )
+        }
     }
 
-    // ── Footnote popup ──────────────────────────────────────────────────────
+    // ── Footnote Dialog ─────────────────────────────────────────────────────
     val activeFootnote = selectedFootnoteKey?.let { footnoteLookup[it] }
     if (selectedFootnoteKey != null) {
         FootnoteDialog(
@@ -773,9 +858,126 @@ private fun ReadingContent(
             onDismiss = { selectedFootnoteKey = null }
         )
     }
+
+    // ── Paragraph Action Sheet (Copy, Share, Bookmark, Add Note) ────────────
+    selectedParagraphForAction?.let { (paraIdx, paraText) ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedParagraphForAction = null }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .navigationBarsPadding()
+            ) {
+                Text(
+                    text = "অনুচ্ছেদ বিকল্প",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "\"${paraText.take(120)}…\"",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3
+                )
+                Spacer(Modifier.height(16.dp))
+
+                // Copy Action
+                ListItem(
+                    headlineContent = { Text("কপি করুন") },
+                    leadingContent = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                    modifier = Modifier.clickable {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Chapter Text", paraText)
+                        clipboard.setPrimaryClip(clip)
+                        selectedParagraphForAction = null
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("টেক্সট ক্লিপবোর্ডে কপি করা হয়েছে")
+                        }
+                    }
+                )
+
+                // Share Quote Action
+                ListItem(
+                    headlineContent = { Text("উক্তি শেয়ার করুন") },
+                    leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
+                    modifier = Modifier.clickable {
+                        val shareText = "📖 ${chapter.title}\n\n\"$paraText\"\n\n— Dynamic Book Reader"
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "উক্তি শেয়ার করুন"))
+                        selectedParagraphForAction = null
+                    }
+                )
+
+                // Bookmark & Add Note Action
+                ListItem(
+                    headlineContent = { Text("বুকমার্ক ও নোট যুক্ত করুন") },
+                    leadingContent = { Icon(Icons.Default.BookmarkAdd, contentDescription = null) },
+                    modifier = Modifier.clickable {
+                        val selected = selectedParagraphForAction
+                        selectedParagraphForAction = null
+                        showAddNoteDialogForParagraph = selected
+                    }
+                )
+            }
+        }
+    }
+
+    // ── Add Note Dialog for Paragraph ───────────────────────────────────────
+    showAddNoteDialogForParagraph?.let { (paraIdx, paraText) ->
+        var noteInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddNoteDialogForParagraph = null },
+            icon = { Icon(Icons.Default.BookmarkAdd, contentDescription = null) },
+            title = { Text("বুকমার্ক ও নোট") },
+            text = {
+                Column {
+                    Text(
+                        text = "\"${paraText.take(100)}…\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = noteInput,
+                        onValueChange = { noteInput = it },
+                        placeholder = { Text("ব্যক্তিগত নোট বা মন্তব্য (ঐচ্ছিক)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onAddBookmark(paraText.take(250), noteInput, currentFraction, paraIdx)
+                        showAddNoteDialogForParagraph = null
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("বুকমার্ক ও নোট সংরক্ষিত হয়েছে")
+                        }
+                    }
+                ) {
+                    Text("সংরক্ষণ করুন")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddNoteDialogForParagraph = null }) {
+                    Text("বাতিল")
+                }
+            }
+        )
+    }
 }
 
-// ── Footnote popup dialog ───────────────────────────────────────────────────
+// ── Footnote Dialog ─────────────────────────────────────────────────────────
 
 @Composable
 private fun FootnoteDialog(
@@ -808,13 +1010,6 @@ private fun FootnoteDialog(
 
 // ── Footnote-aware text renderer ────────────────────────────────────────────
 
-/**
- * Renders an [AnnotatedString] that may contain "footnote" string
- * annotations (pushed via `pushStringAnnotation(tag = "footnote", ...)`)
- * and invokes [onFootnoteClick] with the annotation's key when the user
- * taps directly on one of those spans. Taps elsewhere in the text are
- * ignored (so normal reading/selection isn't affected).
- */
 @Composable
 private fun FootnoteAwareText(
     text: AnnotatedString,
@@ -840,11 +1035,12 @@ private fun FootnoteAwareText(
     )
 }
 
-// ── Table of Contents card ──────────────────────────────────────────────────
+// ── Table of Contents Card ──────────────────────────────────────────────────
 
 @Composable
 private fun TocCard(
     entries: List<String>,
+    fontFamily: ReadingFontFamily,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
     onEntryClick: (String) -> Unit,
@@ -864,7 +1060,6 @@ private fun TocCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
-            // Header row — always visible, toggles expand/collapse
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -881,7 +1076,9 @@ private fun TocCard(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     text = "সূচিপত্র",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = fontFamily.fontFamily
+                    ),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
@@ -913,13 +1110,17 @@ private fun TocCard(
                         ) {
                             Text(
                                 text = "${index + 1}.",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = fontFamily.fontFamily
+                                ),
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(end = 10.dp)
                             )
                             Text(
                                 text = entry,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = fontFamily.fontFamily
+                                ),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.weight(1f)
                             )
@@ -937,56 +1138,72 @@ private fun TocCard(
     }
 }
 
-// ── Settings Panel ────────────────────────────────────────────────────────────
+// ── Reading Settings Panel ───────────────────────────────────────────────────
 
 @Composable
 private fun ReadingSettingsPanel(
     fontSize: Float,
     lineHeight: Float,
     currentTheme: ReadingTheme,
+    currentFontFamily: ReadingFontFamily,
+    currentTextAlign: TextAlignOption,
+    keepScreenOn: Boolean,
     onFontIncrease: () -> Unit,
     onFontDecrease: () -> Unit,
     onLineHeightIncrease: () -> Unit,
     onLineHeightDecrease: () -> Unit,
     onThemeChange: (ReadingTheme) -> Unit,
+    onFontFamilyChange: (ReadingFontFamily) -> Unit,
+    onTextAlignChange: (TextAlignOption) -> Unit,
+    onKeepScreenOnChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 16.dp,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(horizontal = 20.dp, vertical = 16.dp)
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
         ) {
-            // Handle bar
+            // Drag handle
             Box(
                 modifier = Modifier
-                    .width(40.dp)
+                    .width(44.dp)
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
                     .align(Alignment.CenterHorizontally)
             )
 
+            Spacer(Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "পাঠ সেটিংস",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "বন্ধ করুন")
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = "পাঠ সেটিংস",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(Modifier.height(20.dp))
 
             // Font size row
             SettingsRow(label = "ফন্ট সাইজ: ${fontSize.toInt()}sp") {
                 ControlButton(label = "A−", onClick = onFontDecrease)
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 ControlButton(label = "A+", onClick = onFontIncrease, large = true)
             }
 
@@ -995,27 +1212,160 @@ private fun ReadingSettingsPanel(
             // Line height row
             SettingsRow(label = "লাইন উচ্চতা: ${"%.1f".format(lineHeight)}×") {
                 ControlButton(label = "−", onClick = onLineHeightDecrease)
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 ControlButton(label = "+", onClick = onLineHeightIncrease)
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Font Family row
+            Text(
+                text = "ফন্ট শৈলী (Font Family)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ReadingFontFamily.entries.forEach { family ->
+                    val selected = family == currentFontFamily
+                    Surface(
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onFontFamilyChange(family) }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = family.displayName,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = family.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 10.sp,
+                                color = if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Text Alignment row
+            Text(
+                text = "টেক্সট অ্যালাইনমেন্ট",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextAlignOption.entries.forEach { alignOpt ->
+                    val selected = alignOpt == currentTextAlign
+                    Surface(
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onTextAlignChange(alignOpt) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(text = alignOpt.emoji, fontSize = 16.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = alignOpt.displayName,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))
 
             // Theme row
             Text(
-                text = "থিম",
+                text = "রিডিং থিম",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ReadingTheme.entries.forEach { theme ->
-                    ThemeChip(
-                        theme = theme,
-                        selected = theme == currentTheme,
-                        onClick = { onThemeChange(theme) }
+                    val selected = theme == currentTheme
+                    Surface(
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onThemeChange(theme) }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(text = theme.emoji, fontSize = 18.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = theme.displayName,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Keep Screen On Switch
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "স্ক্রিন চালু রাখুন",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "পড়ার সময় স্ক্রিনের আলো নিভে যাবে না",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Switch(
+                    checked = keepScreenOn,
+                    onCheckedChange = onKeepScreenOnChange
+                )
             }
 
             Spacer(Modifier.height(8.dp))
@@ -1052,41 +1402,5 @@ private fun ControlButton(label: String, onClick: () -> Unit, large: Boolean = f
             fontSize = if (large) 18.sp else 14.sp,
             fontWeight = FontWeight.Medium
         )
-    }
-}
-
-@Composable
-private fun ThemeChip(
-    theme: ReadingTheme,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val backgroundColor = if (selected)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.surfaceVariant
-
-    val textColor = if (selected)
-        MaterialTheme.colorScheme.onPrimaryContainer
-    else
-        MaterialTheme.colorScheme.onSurfaceVariant
-
-    Surface(
-        color = backgroundColor,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(text = theme.emoji, fontSize = 16.sp)
-            Text(
-                text = theme.displayName,
-                style = MaterialTheme.typography.labelLarge,
-                color = textColor
-            )
-        }
     }
 }

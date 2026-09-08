@@ -6,6 +6,31 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
+// ── Font Family Options ───────────────────────────────────────────────────────
+
+enum class ReadingFontFamily(
+    val displayName: String,
+    val subtitle: String,
+    val fontFamily: FontFamily
+) {
+    DEFAULT("সিস্টেম", "ডিফল্ট", FontFamily.Default),
+    SERIF("সেরিফ", "ঐতিহ্যবাহী", FontFamily.Serif),
+    SANS_SERIF("স্যান্স", "আধুনিক", FontFamily.SansSerif),
+    MONOSPACE("মনোস্পেস", "সুস্পষ্ট", FontFamily.Monospace)
+}
+
+// ── Text Alignment Options ────────────────────────────────────────────────────
+
+enum class TextAlignOption(
+    val displayName: String,
+    val emoji: String,
+    val align: androidx.compose.ui.text.style.TextAlign
+) {
+    JUSTIFY("উভয়পাশ", "☰", androidx.compose.ui.text.style.TextAlign.Justify),
+    START("বামপাশ", "⇤", androidx.compose.ui.text.style.TextAlign.Start),
+    CENTER("মাঝখানে", "☵", androidx.compose.ui.text.style.TextAlign.Center)
+}
+
 /**
  * Typography scale.
  *

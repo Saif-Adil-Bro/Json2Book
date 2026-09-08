@@ -142,6 +142,7 @@ fun AppNavigation(
                 // ── Tab: Menu ────────────────────────────────────────────────
                 composable(Screen.Menu.route) {
                     MenuScreen(
+                        onBookmarksClick = { navController.navigate(Screen.Bookmarks.route) },
                         onSettingsClick = { navController.navigate(Screen.Settings.route) },
                         onContactClick = { navController.navigate(Screen.Contact.route) },
                         onPrivacyPolicyClick = { navController.navigate(Screen.PrivacyPolicy.route) },
@@ -185,6 +186,15 @@ fun AppNavigation(
                 }
 
                 // ── Full-screen: Menu sub-pages ──────────────────────────────
+                composable(Screen.Bookmarks.route) {
+                    BookmarksScreen(
+                        viewModel = viewModel,
+                        onBookmarkClick = { chapterNo ->
+                            navController.navigate(Screen.Reading.createRoute(chapterNo))
+                        },
+                        onBack = { navController.popBackStack() }
+                    )
+                }
                 composable(Screen.Settings.route) {
                     SettingsScreen(
                         viewModel = viewModel,

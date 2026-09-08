@@ -5,9 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dynamicbookreader.data.model.Author
 import com.dynamicbookreader.data.model.BookData
+import com.dynamicbookreader.data.model.Bookmark
 import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.data.model.ContactInfo
 import com.dynamicbookreader.data.repository.AuthorRepository
+import com.dynamicbookreader.data.repository.BookmarkRepository
 import com.dynamicbookreader.data.repository.BookRepository
 import com.dynamicbookreader.data.repository.ContactRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository
@@ -15,7 +17,9 @@ import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Compan
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_LINE_HEIGHT
 import com.dynamicbookreader.data.repository.ReadingProgress
 import com.dynamicbookreader.data.repository.ReadingProgressRepository
+import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
+import com.dynamicbookreader.ui.theme.TextAlignOption
 import com.dynamicbookreader.utils.JsonParser
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -83,6 +87,7 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     private val contactRepository = ContactRepository(application)
     private val prefsRepository = ReadingPreferencesRepository(application)
     private val progressRepository = ReadingProgressRepository(application)
+    private val bookmarkRepository = BookmarkRepository(application)
 
     // ── Book data state (Home / chapter list) ────────────────────────────────
 
@@ -133,6 +138,20 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     val readingTheme: StateFlow<ReadingTheme> = prefsRepository.readingTheme
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingTheme.DAY)
+
+    val fontFamily: StateFlow<ReadingFontFamily> = prefsRepository.fontFamily
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingFontFamily.DEFAULT)
+
+    val textAlign: StateFlow<TextAlignOption> = prefsRepository.textAlign
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextAlignOption.JUSTIFY)
+
+    val keepScreenOn: StateFlow<Boolean> = prefsRepository.keepScreenOn
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    // ── Bookmarks & Notes ───────────────────────────────────────────────────
+
+    val bookmarks: StateFlow<List<Bookmark>> = bookmarkRepository.bookmarks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // ── Reading progress ("continue reading") ────────────────────────────────
 
@@ -344,5 +363,45 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setReadingTheme(theme: ReadingTheme) = viewModelScope.launch {
         prefsRepository.setReadingTheme(theme)
+    }
+
+    fun setFontFamily(family: ReadingFontFamily) = viewModelScope.launch {
+        prefsRepository.setFontFamily(family)
+    }
+
+    fun setTextAlign(align: TextAlignOption) = viewModelScope.launch {
+        prefsRepository.setTextAlign(align)
+    }
+
+    fun setKeepScreenOn(keep: Boolean) = viewModelScope.launch {
+        prefsRepository.setKeepScreenOn(keep)
+    }
+
+    // ── Public API: Bookmarks & Notes ────────────────────────────────────────
+
+    fun addBookmark(
+        chapterNo: Int,
+        chapterTitle: String,
+        snippet: String,
+        note: String = "",
+        scrollFraction: Float = 0f,
+        paragraphIndex: Int = 0
+    ) = viewModelScope.launch {
+        bookmarkRepository.addBookmark(
+            chapterNo = chapterNo,
+            chapterTitle = chapterTitle,
+            snippet = snippet,
+            note = note,
+            scrollFraction = scrollFraction,
+            paragraphIndex = paragraphIndex
+        )
+    }
+
+    fun deleteBookmark(id: String) = viewModelScope.launch {
+        bookmarkRepository.deleteBookmark(id)
+    }
+
+    fun updateBookmarkNote(id: String, note: String) = viewModelScope.launch {
+        bookmarkRepository.updateBookmarkNote(id, note)
     }
 }
