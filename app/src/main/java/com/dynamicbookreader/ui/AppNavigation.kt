@@ -12,9 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.navArgument
 import com.dynamicbookreader.ui.components.BottomNavBar
 import com.dynamicbookreader.ui.screens.*
 import com.dynamicbookreader.ui.theme.DynamicBookReaderTheme
@@ -125,6 +127,9 @@ fun AppNavigation(
                         },
                         onAuthorReadMoreClick = {
                             navController.navigate(Screen.AuthorDetail.route)
+                        },
+                        onAnalyticsClick = {
+                            navController.navigate(Screen.Analytics.route)
                         }
                     )
                 }
@@ -143,6 +148,8 @@ fun AppNavigation(
                 composable(Screen.Menu.route) {
                     MenuScreen(
                         onBookmarksClick = { navController.navigate(Screen.Bookmarks.route) },
+                        onAnalyticsClick = { navController.navigate(Screen.Analytics.route) },
+                        onQuoteCardClick = { navController.navigate(Screen.QuoteCard.createRoute()) },
                         onSettingsClick = { navController.navigate(Screen.Settings.route) },
                         onContactClick = { navController.navigate(Screen.Contact.route) },
                         onPrivacyPolicyClick = { navController.navigate(Screen.PrivacyPolicy.route) },
@@ -154,11 +161,11 @@ fun AppNavigation(
                 composable(
                     route = Screen.Reading.route,
                     arguments = listOf(
-                        androidx.navigation.navArgument("chapterNo") {
-                            type = androidx.navigation.NavType.IntType
+                        navArgument("chapterNo") {
+                            type = NavType.IntType
                         },
-                        androidx.navigation.navArgument("targetHeading") {
-                            type = androidx.navigation.NavType.StringType
+                        navArgument("targetHeading") {
+                            type = NavType.StringType
                             nullable = true
                             defaultValue = null
                         }
@@ -173,6 +180,48 @@ fun AppNavigation(
                         chapterNo = chapterNo,
                         targetHeading = targetHeading,
                         viewModel = viewModel,
+                        onQuoteCardClick = { quote, bookTitle ->
+                            navController.navigate(Screen.QuoteCard.createRoute(quote, bookTitle))
+                        },
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                // ── Full-screen: Analytics ───────────────────────────────────
+                composable(Screen.Analytics.route) {
+                    AnalyticsScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                // ── Full-screen: Quote Card Maker ────────────────────────────
+                composable(
+                    route = Screen.QuoteCard.route,
+                    arguments = listOf(
+                        navArgument("quote") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("title") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        }
+                    )
+                ) { entry ->
+                    val quoteEncoded = entry.arguments?.getString("quote") ?: ""
+                    val titleEncoded = entry.arguments?.getString("title") ?: ""
+                    val initialQuote = try {
+                        java.net.URLDecoder.decode(quoteEncoded, "UTF-8")
+                    } catch (e: Exception) { quoteEncoded }
+                    val initialTitle = try {
+                        java.net.URLDecoder.decode(titleEncoded, "UTF-8")
+                    } catch (e: Exception) { titleEncoded }
+
+                    QuoteCardScreen(
+                        viewModel = viewModel,
+                        initialQuote = initialQuote,
+                        initialBookTitle = initialTitle,
                         onBack = { navController.popBackStack() }
                     )
                 }

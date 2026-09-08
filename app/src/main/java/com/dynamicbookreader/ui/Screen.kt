@@ -39,6 +39,14 @@ sealed class Screen(val route: String) {
     }
 
     object AuthorDetail : Screen("author_detail")
+    object Analytics : Screen("analytics")
+    object QuoteCard : Screen("quote_card?quote={quote}&title={title}") {
+        fun createRoute(quote: String = "", title: String = ""): String {
+            val encodedQuote = java.net.URLEncoder.encode(quote, "UTF-8")
+            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            return "quote_card?quote=$encodedQuote&title=$encodedTitle"
+        }
+    }
 
     // ── Menu sub-pages ─────────────────────────────────────────────────────
     object Bookmarks : Screen("menu/bookmarks")

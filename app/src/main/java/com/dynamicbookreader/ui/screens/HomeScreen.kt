@@ -56,13 +56,16 @@ fun HomeScreen(
     onChapterClick: (Chapter) -> Unit,
     onChapterSubheadingClick: (Chapter, headingText: String) -> Unit,
     onContinueReadingClick: (chapterNo: Int) -> Unit,
-    onAuthorReadMoreClick: () -> Unit
+    onAuthorReadMoreClick: () -> Unit,
+    onAnalyticsClick: () -> Unit = {},
+    onQuoteCardClick: (quote: String, title: String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val authorState by viewModel.authorUiState.collectAsState()
     val readingProgress by viewModel.readingProgress.collectAsState()
     val perChapterProgress by viewModel.perChapterProgress.collectAsState()
     val perChapterReadHeadings by viewModel.perChapterReadHeadings.collectAsState()
+    val analytics by viewModel.analyticsData.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -92,6 +95,14 @@ fun HomeScreen(
                                 bookTitle = bookData.bookTitle,
                                 authorState = authorState,
                                 onReadMoreClick = onAuthorReadMoreClick
+                            )
+                        }
+
+                        // ── Daily Goal & Streak Quick Bar ─────────────────────
+                        item {
+                            HomeStreakBar(
+                                analytics = analytics,
+                                onClick = onAnalyticsClick
                             )
                         }
 
@@ -364,14 +375,6 @@ private fun ChapterCard(
     onClick: () -> Unit,
     onSubheadingClick: (headingText: String) -> Unit
 ) {
-    // Cache the preview substring once per chapter — avoids recomputing
-    // String.take()/trim() on every recomposition while scrolling.
-    // Footnote markers are stripped so raw {{note:KEY}} text never leaks
-    // into the preview.
-    val previewText = remember(chapter.chapterNo) {
-        ChapterContentParser.stripFootnoteMarkers(chapter.content).take(80).trim() + "…"
-    }
-
     val isCompleted = progressFraction >= COMPLETED_THRESHOLD
     val isInProgress = progressFraction > 0f && !isCompleted
 
@@ -448,7 +451,7 @@ private fun ChapterCard(
 
                 Spacer(Modifier.width(14.dp))
 
-                // Chapter title + subtitle/preview
+                // Chapter title
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = chapter.title,
@@ -458,29 +461,6 @@ private fun ChapterCard(
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 22.sp
                     )
-
-                    Spacer(Modifier.height(4.dp))
-
-                    if (chapter.subtitle.isNotBlank()) {
-                        // Subtitle takes priority over the content preview when
-                        // present, to keep the card from feeling cluttered.
-                        Text(
-                            text = chapter.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = accentColor,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    } else {
-                        // Content preview (precomputed above)
-                        Text(
-                            text = previewText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = onContainerColor.copy(alpha = 0.65f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
 
                 Spacer(Modifier.width(8.dp))
@@ -682,3 +662,80 @@ private fun FullScreenError(message: String, onRetry: () -> Unit) {
         }
     }
 }
+
+// ── Daily Goal & Streak Bar for Home Screen ──────────────────────────────────
+
+@Composable
+private fun HomeStreakBar(
+    analytics: com.dynamicbookreader.data.model.ReadingAnalyticsData,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Flame Streak Badge
+            Surface(
+                color = Color(0xFFFF5722).copy(alpha = 0.15f),
+                shape = CircleShape
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🔥", fontSize = 16.sp)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "${analytics.currentStreakDays} দিন",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD84315)
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "আজকের পাঠ: ${analytics.todayMinutesRead}/${analytics.dailyGoalMinutes} মিনিট",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { analytics.goalProgressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = if (analytics.isGoalCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "অ্যানালিটিক্স দেখুন",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+

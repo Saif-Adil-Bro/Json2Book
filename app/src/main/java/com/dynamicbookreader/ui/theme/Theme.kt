@@ -16,7 +16,20 @@ enum class ReadingTheme(
     DAY("দিন", "☀️"),
     SEPIA("সেপিয়া", "📜"),
     NIGHT("রাত", "🌙"),
-    AMOLED("ওলেড", "🌑")
+    AMOLED("ওলেড", "🌑"),
+    EMERALD("পান্না সবুজ", "🌲"),
+    ROSE("রোজ ভেলভেট", "🌸")
+}
+
+// ── Reading Page Modes ────────────────────────────────────────────────────────
+
+enum class ReadingMode(
+    val displayName: String,
+    val subtitle: String,
+    val emoji: String
+) {
+    SCROLL("স্ক্রোল মোড", "ধারাবাহিক স্ক্রোল", "📜"),
+    PAGE_FLIP("পাতা ওল্টানো", "বাস্তব বইয়ের পাতা", "📖")
 }
 
 // ── Color Palette ─────────────────────────────────────────────────────────────
@@ -52,6 +65,18 @@ private val AmoledBackground = Color(0xFF000000)      // pitch black for battery
 private val AmoledOnBackground = Color(0xFFE2E2E2)    // soft readable white
 private val AmoledSurface = Color(0xFF121212)
 private val AmoledSurfaceVariant = Color(0xFF1E1E1E)
+
+// Emerald Forest theme colours (Relaxing green for long reading sessions)
+private val EmeraldBackground = Color(0xFFF0F5F1)
+private val EmeraldOnBackground = Color(0xFF1B3322)
+private val EmeraldSurface = Color(0xFFF7FAF7)
+private val EmeraldSurfaceVariant = Color(0xFFDDE8DF)
+
+// Rose Velvet theme colours (Warm soothing aesthetic)
+private val RoseBackground = Color(0xFFFAF2F2)
+private val RoseOnBackground = Color(0xFF3B2024)
+private val RoseSurface = Color(0xFFFFF7F7)
+private val RoseSurfaceVariant = Color(0xFFEEDCDC)
 
 // ── ColorSchemes ──────────────────────────────────────────────────────────────
 
@@ -113,6 +138,36 @@ private val AmoledColorScheme = darkColorScheme(
     onSurfaceVariant = Color(0xFF9E9E9E)
 )
 
+private val EmeraldColorScheme = lightColorScheme(
+    primary = Color(0xFF2E6B48),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFC7EBD3),
+    onPrimaryContainer = Color(0xFF0F3820),
+    secondary = Color(0xFF4A7558),
+    secondaryContainer = Color(0xFFCCE4D4),
+    background = EmeraldBackground,
+    onBackground = EmeraldOnBackground,
+    surface = EmeraldSurface,
+    onSurface = EmeraldOnBackground,
+    surfaceVariant = EmeraldSurfaceVariant,
+    onSurfaceVariant = Color(0xFF385240)
+)
+
+private val RoseColorScheme = lightColorScheme(
+    primary = Color(0xFF8C3E52),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFDD5DE),
+    onPrimaryContainer = Color(0xFF4A1020),
+    secondary = Color(0xFF965360),
+    secondaryContainer = Color(0xFFFBE0E5),
+    background = RoseBackground,
+    onBackground = RoseOnBackground,
+    surface = RoseSurface,
+    onSurface = RoseOnBackground,
+    surfaceVariant = RoseSurfaceVariant,
+    onSurfaceVariant = Color(0xFF5C333D)
+)
+
 // ── Theme selectors ───────────────────────────────────────────────────────────
 
 fun ReadingTheme.colorScheme(): ColorScheme = when (this) {
@@ -120,6 +175,8 @@ fun ReadingTheme.colorScheme(): ColorScheme = when (this) {
     ReadingTheme.NIGHT -> NightColorScheme
     ReadingTheme.SEPIA -> SepiaColorScheme
     ReadingTheme.AMOLED -> AmoledColorScheme
+    ReadingTheme.EMERALD -> EmeraldColorScheme
+    ReadingTheme.ROSE -> RoseColorScheme
 }
 
 // ── App-wide MaterialTheme wrapper ────────────────────────────────────────────

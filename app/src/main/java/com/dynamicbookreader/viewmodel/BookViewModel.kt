@@ -8,10 +8,12 @@ import com.dynamicbookreader.data.model.BookData
 import com.dynamicbookreader.data.model.Bookmark
 import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.data.model.ContactInfo
+import com.dynamicbookreader.data.model.ReadingAnalyticsData
 import com.dynamicbookreader.data.repository.AuthorRepository
 import com.dynamicbookreader.data.repository.BookmarkRepository
 import com.dynamicbookreader.data.repository.BookRepository
 import com.dynamicbookreader.data.repository.ContactRepository
+import com.dynamicbookreader.data.repository.ReadingAnalyticsRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_FONT_SIZE
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_LINE_HEIGHT
@@ -20,7 +22,9 @@ import com.dynamicbookreader.data.repository.ReadingProgressRepository
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.ui.theme.TextAlignOption
+import com.dynamicbookreader.utils.BengaliTtsManager
 import com.dynamicbookreader.utils.JsonParser
+import com.dynamicbookreader.utils.TtsPlaybackState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -40,12 +45,7 @@ sealed class BookUiState {
     data class Error(val message: String) : BookUiState()
 }
 
-/**
- * State of opening a single chapter (triggered by tapping a list item).
- * Kept separate from [BookUiState] so the Home screen's list stays mounted
- * and responsive while a chapter is being resolved — only the Reading
- * screen (or a small overlay) needs to react to this.
- */
+/** State of opening a single chapter (Reading screen). */
 sealed class ChapterUiState {
     object Idle : ChapterUiState()
     object Loading : ChapterUiState()
@@ -53,18 +53,14 @@ sealed class ChapterUiState {
     data class Error(val message: String) : ChapterUiState()
 }
 
-/** State of the author.json load (used by the hero section + author detail page). */
+/** State of the author.json load. */
 sealed class AuthorUiState {
     object Loading : AuthorUiState()
     data class Success(val author: Author) : AuthorUiState()
     data class Error(val message: String) : AuthorUiState()
 }
 
-/**
- * State of the contact.json load. Lazy-loaded (Idle until the Contact page
- * is first opened) since it's small and rarely-visited — no reason to
- * delay/compete with book + author loading at app start.
- */
+/** State of the contact.json load. */
 sealed class ContactUiState {
     object Idle : ContactUiState()
     object Loading : ContactUiState()
@@ -74,12 +70,6 @@ sealed class ContactUiState {
 
 // ── ViewModel ────────────────────────────────────────────────────────────────
 
-/**
- * Shared ViewModel between all screens.
- *
- * Uses AndroidViewModel to access [Application] context for the repository —
- * avoids leaking Activity context.
- */
 class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val bookRepository = BookRepository(application)
@@ -88,37 +78,46 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     private val prefsRepository = ReadingPreferencesRepository(application)
     private val progressRepository = ReadingProgressRepository(application)
     private val bookmarkRepository = BookmarkRepository(application)
+    private val analyticsRepository = ReadingAnalyticsRepository(application)
 
-    // ── Book data state (Home / chapter list) ────────────────────────────────
+    val ttsManager = BengaliTtsManager(application)
+    val ttsPlaybackState: StateFlow<TtsPlaybackState> = ttsManager.playbackState
+    val ttsSleepTimerMinutes: StateFlow<Int?> = ttsManager.sleepTimerMinutes
+    val ttsSleepTimerSecondsLeft: StateFlow<Int> = ttsManager.sleepTimerSecondsLeft
+
+    // ── Book data state ──────────────────────────────────────────────────────
 
     private val _uiState = MutableStateFlow<BookUiState>(BookUiState.Loading)
     val uiState: StateFlow<BookUiState> = _uiState.asStateFlow()
 
-    // ── Author state (hero section + author detail page) ─────────────────────
+    val bookData: StateFlow<BookData?> = _uiState.map {
+        (it as? BookUiState.Success)?.bookData
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    // ── Author state ─────────────────────────────────────────────────────────
 
     private val _authorUiState = MutableStateFlow<AuthorUiState>(AuthorUiState.Loading)
     val authorUiState: StateFlow<AuthorUiState> = _authorUiState.asStateFlow()
 
-    // ── Contact state (Menu → Contact page, lazy-loaded) ──────────────────────
+    val authorData: StateFlow<Author?> = _authorUiState.map {
+        (it as? AuthorUiState.Success)?.author
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    // ── Contact state ────────────────────────────────────────────────────────
 
     private val _contactUiState = MutableStateFlow<ContactUiState>(ContactUiState.Idle)
     val contactUiState: StateFlow<ContactUiState> = _contactUiState.asStateFlow()
 
-    // ── Selected / opened chapter state (Reading screen) ─────────────────────
+    // ── Chapter state ────────────────────────────────────────────────────────
 
     private val _chapterUiState = MutableStateFlow<ChapterUiState>(ChapterUiState.Idle)
     val chapterUiState: StateFlow<ChapterUiState> = _chapterUiState.asStateFlow()
 
-    // ── Search (local, in-memory — filters the already-loaded chapters) ──────
+    // ── Search ───────────────────────────────────────────────────────────────
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    /**
-     * Chapters whose title or content match [searchQuery] (case-insensitive).
-     * Empty query -> empty result list (search tab shows a prompt instead of
-     * dumping the whole book).
-     */
     val searchResults: StateFlow<List<Chapter>> = combine(_searchQuery, uiState) { query, book ->
         if (query.isBlank()) return@combine emptyList()
         val chapters = (book as? BookUiState.Success)?.bookData?.chapters ?: return@combine emptyList()
@@ -128,7 +127,7 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // ── Reading preferences (persisted via DataStore) ────────────────────────
+    // ── Reading preferences ──────────────────────────────────────────────────
 
     val fontSize: StateFlow<Float> = prefsRepository.fontSize
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_FONT_SIZE)
@@ -148,12 +147,18 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     val keepScreenOn: StateFlow<Boolean> = prefsRepository.keepScreenOn
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    val readingMode: StateFlow<com.dynamicbookreader.ui.theme.ReadingMode> = prefsRepository.readingMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.dynamicbookreader.ui.theme.ReadingMode.SCROLL)
+
+    val paperTextureEnabled: StateFlow<Boolean> = prefsRepository.paperTextureEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     // ── Bookmarks & Notes ───────────────────────────────────────────────────
 
     val bookmarks: StateFlow<List<Bookmark>> = bookmarkRepository.bookmarks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // ── Reading progress ("continue reading") ────────────────────────────────
+    // ── Reading progress ─────────────────────────────────────────────────────
 
     val readingProgress: StateFlow<ReadingProgress> = progressRepository.readingProgress
         .stateIn(
@@ -162,32 +167,31 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
             ReadingProgress(chapterNo = null, scrollFraction = 0f, chapterTitle = null, updatedAtMillis = 0L)
         )
 
-    /** chapterNo -> scrollFraction (0f..1f) for every chapter with any saved progress. Powers per-card progress rings on Home. */
     val perChapterProgress: StateFlow<Map<Int, Float>> = progressRepository.perChapterProgress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    /** chapterNo -> Set of headingKeys the user has scrolled past. Powers read/unread icons on Home sub-section list. */
     val perChapterReadHeadings: StateFlow<Map<Int, Set<String>>> = progressRepository.perChapterReadHeadings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    /** Called from ReadingScreen when the user scrolls past a heading section. */
+    // ── Reading Analytics & Streaks ──────────────────────────────────────────
+
+    val analyticsData: StateFlow<ReadingAnalyticsData> = analyticsRepository.analyticsData
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingAnalyticsData())
+
     fun markHeadingRead(chapterNo: Int, headingKey: String) {
         viewModelScope.launch {
             progressRepository.markHeadingRead(chapterNo, headingKey)
         }
     }
 
-    // Debounce scroll-position saves so we don't hammer DataStore on every pixel.
     private var progressSaveJob: Job? = null
-
-    // ── Init: load data immediately ──────────────────────────────────────────
 
     init {
         loadBook()
         loadAuthor()
     }
 
-    // ── Public API: book / chapter list ──────────────────────────────────────
+    // ── Public API: Book / Chapter ───────────────────────────────────────────
 
     fun loadBook() {
         viewModelScope.launch {
@@ -201,7 +205,6 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Force re-read from disk, bypassing the in-memory cache (pull-to-retry). */
     fun reloadBookFromSource() {
         viewModelScope.launch {
             _uiState.value = BookUiState.Loading
@@ -214,7 +217,7 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Public API: author ────────────────────────────────────────────────────
+    // ── Public API: Author ────────────────────────────────────────────────────
 
     fun loadAuthor() {
         viewModelScope.launch {
@@ -240,13 +243,8 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Public API: contact ───────────────────────────────────────────────────
+    // ── Public API: Contact ───────────────────────────────────────────────────
 
-    /**
-     * Loads contact.json on demand (called when the Contact screen appears).
-     * Skips reloading if already successfully loaded, so re-visiting the
-     * page doesn't re-read the asset file every time.
-     */
     fun loadContactInfoIfNeeded() {
         if (_contactUiState.value is ContactUiState.Success) return
         viewModelScope.launch {
@@ -272,7 +270,7 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Public API: search ────────────────────────────────────────────────────
+    // ── Public API: Search ────────────────────────────────────────────────────
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -282,15 +280,8 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         _searchQuery.value = ""
     }
 
-    // ── Public API: opening a chapter ────────────────────────────────────────
+    // ── Public API: Chapter reading ──────────────────────────────────────────
 
-    /**
-     * Called when the user taps a chapter card. Since the book is normally
-     * already cached, this usually resolves instantly — but we still route
-     * through [ChapterUiState.Loading] so the UI can show a spinner if the
-     * cache happens to be cold (first-ever app launch deep link, slow
-     * storage, etc.) and an error state if parsing fails.
-     */
     fun openChapter(chapterNo: Int) {
         _chapterUiState.value = ChapterUiState.Loading
         viewModelScope.launch {
@@ -305,36 +296,28 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Retry after a failed chapter open. */
     fun retryOpenChapter(chapterNo: Int) = openChapter(chapterNo)
 
-    /** Resets chapter state when leaving the Reading screen. */
     fun clearChapterState() {
         _chapterUiState.value = ChapterUiState.Idle
         progressSaveJob?.cancel()
+        ttsManager.stop()
     }
 
-    // ── Public API: reading progress ─────────────────────────────────────────
+    // ── Public API: Progress & Analytics ─────────────────────────────────────
 
-    /**
-     * Records how far the user has scrolled into the current chapter.
-     * Debounced by 600ms so rapid scroll events don't spam DataStore writes.
-     * Ignores near-zero scroll so simply opening and immediately leaving a
-     * chapter doesn't erase a previously saved deeper position.
-     */
     fun updateReadingProgress(chapterNo: Int, chapterTitle: String, scrollFraction: Float) {
         if (scrollFraction < 0.01f) return
         progressSaveJob?.cancel()
         progressSaveJob = viewModelScope.launch {
             delay(600)
             progressRepository.saveProgress(chapterNo, chapterTitle, scrollFraction)
+            if (scrollFraction >= 0.95f) {
+                analyticsRepository.incrementCompletedChapters()
+            }
         }
     }
 
-    /**
-     * Saves immediately (e.g. when the user navigates away) — no debounce.
-     * Same near-zero guard as [updateReadingProgress].
-     */
     fun saveReadingProgressNow(chapterNo: Int, chapterTitle: String, scrollFraction: Float) {
         if (scrollFraction < 0.01f) return
         progressSaveJob?.cancel()
@@ -343,7 +326,15 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Public API: reading preferences ──────────────────────────────────────
+    fun recordReadingTime(seconds: Long) = viewModelScope.launch {
+        analyticsRepository.recordReadingSession(seconds)
+    }
+
+    fun setDailyGoalMinutes(minutes: Int) = viewModelScope.launch {
+        analyticsRepository.setDailyGoalMinutes(minutes)
+    }
+
+    // ── Public API: Reading preferences ──────────────────────────────────────
 
     fun increaseFontSize() = viewModelScope.launch {
         prefsRepository.setFontSize(fontSize.value + 1f)
@@ -377,6 +368,14 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
         prefsRepository.setKeepScreenOn(keep)
     }
 
+    fun setReadingMode(mode: com.dynamicbookreader.ui.theme.ReadingMode) = viewModelScope.launch {
+        prefsRepository.setReadingMode(mode)
+    }
+
+    fun setPaperTextureEnabled(enabled: Boolean) = viewModelScope.launch {
+        prefsRepository.setPaperTextureEnabled(enabled)
+    }
+
     // ── Public API: Bookmarks & Notes ────────────────────────────────────────
 
     fun addBookmark(
@@ -403,5 +402,48 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateBookmarkNote(id: String, note: String) = viewModelScope.launch {
         bookmarkRepository.updateBookmarkNote(id, note)
+    }
+
+    // ── Public API: Text to Speech (TTS) ─────────────────────────────────────
+
+    fun startTts(paragraphs: List<String>, startIndex: Int = 0) {
+        ttsManager.startReading(paragraphs, startIndex)
+    }
+
+    fun pauseTts() {
+        ttsManager.pause()
+    }
+
+    fun resumeTts() {
+        ttsManager.resume()
+    }
+
+    fun stopTts() {
+        ttsManager.stop()
+    }
+
+    fun skipTtsNext() {
+        ttsManager.skipToNext()
+    }
+
+    fun skipTtsPrevious() {
+        ttsManager.skipToPrevious()
+    }
+
+    fun setTtsSpeechRate(speed: Float) {
+        ttsManager.setSpeechRate(speed)
+    }
+
+    fun setTtsSleepTimer(minutes: Int?) {
+        ttsManager.setSleepTimer(minutes)
+    }
+
+    fun cancelTtsSleepTimer() {
+        ttsManager.cancelSleepTimer()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        ttsManager.shutdown()
     }
 }

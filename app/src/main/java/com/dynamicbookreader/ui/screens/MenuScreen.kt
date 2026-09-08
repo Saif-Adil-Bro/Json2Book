@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun MenuScreen(
     onBookmarksClick: () -> Unit,
+    onAnalyticsClick: () -> Unit,
+    onQuoteCardClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onContactClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
@@ -41,6 +43,18 @@ fun MenuScreen(
                 .padding(vertical = 8.dp)
         ) {
             MenuSectionLabel("আমার লাইব্রেরি ও পাঠ")
+            MenuItemRow(
+                icon = Icons.Default.QueryStats,
+                title = "রিডিং অ্যানালিটিক্স ও গোল",
+                subtitle = "দৈনিক পড়ার সময়, স্ট্রিক ট্র্যাকার ও পরিসংখ্যান",
+                onClick = onAnalyticsClick
+            )
+            MenuItemRow(
+                icon = Icons.Default.FormatQuote,
+                title = "কোট কার্ড মেকার",
+                subtitle = "বইয়ের সুন্দর উক্তি দিয়ে ফটো কার্ড তৈরি ও শেয়ার",
+                onClick = onQuoteCardClick
+            )
             MenuItemRow(
                 icon = Icons.Default.BookmarkBorder,
                 title = "বুকমার্ক ও নোটস",

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
+import com.dynamicbookreader.ui.theme.ReadingMode
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.ui.theme.TextAlignOption
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,8 @@ class ReadingPreferencesRepository(private val context: Context) {
         private val KEY_FONT_FAMILY = stringPreferencesKey("font_family")
         private val KEY_TEXT_ALIGN = stringPreferencesKey("text_align")
         private val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        private val KEY_READING_MODE = stringPreferencesKey("reading_mode")
+        private val KEY_PAPER_TEXTURE = booleanPreferencesKey("paper_texture")
 
         const val DEFAULT_FONT_SIZE = 17f
         const val MIN_FONT_SIZE = 12f
@@ -79,6 +82,19 @@ class ReadingPreferencesRepository(private val context: Context) {
         prefs[KEY_KEEP_SCREEN_ON] ?: true
     }
 
+    val readingMode: Flow<ReadingMode> = context.dataStore.data.map { prefs ->
+        val name = prefs[KEY_READING_MODE] ?: ReadingMode.SCROLL.name
+        try {
+            ReadingMode.valueOf(name)
+        } catch (e: Exception) {
+            ReadingMode.SCROLL
+        }
+    }
+
+    val paperTextureEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_PAPER_TEXTURE] ?: false
+    }
+
     suspend fun setFontSize(size: Float) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FONT_SIZE] = size.coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE)
@@ -94,6 +110,18 @@ class ReadingPreferencesRepository(private val context: Context) {
     suspend fun setReadingTheme(theme: ReadingTheme) {
         context.dataStore.edit { prefs ->
             prefs[KEY_THEME] = theme.name
+        }
+    }
+
+    suspend fun setReadingMode(mode: ReadingMode) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_READING_MODE] = mode.name
+        }
+    }
+
+    suspend fun setPaperTextureEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PAPER_TEXTURE] = enabled
         }
     }
 
