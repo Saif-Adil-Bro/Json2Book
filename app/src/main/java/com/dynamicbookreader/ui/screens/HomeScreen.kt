@@ -127,13 +127,30 @@ fun HomeScreen(
                         // ── Chapter Cards ─────────────────────────────────────
                         itemsIndexed(
                             items = bookData.chapters,
-                            key = { _, chapter -> chapter.chapterNo }
+                            key = { _, chapter -> chapter.chapterNo },
+                            contentType = { _, _ -> "chapter_card" }
                         ) { _, chapter ->
+                            val progressFraction = perChapterProgress[chapter.chapterNo] ?: 0f
+                            val isLastRead = chapter.chapterNo == readingProgress.chapterNo
+                            val readHeadings = perChapterReadHeadings[chapter.chapterNo] ?: emptySet()
+                            val totalMinutes = remember(chapter.chapterNo) {
+                                ReadingTimeEstimator.totalMinutes(chapter.chapterNo, chapter.content)
+                            }
+                            val remainingMinutes = remember(totalMinutes, progressFraction) {
+                                ReadingTimeEstimator.remainingMinutes(totalMinutes, progressFraction)
+                            }
+                            val subheadings = remember(chapter.chapterNo) {
+                                ChapterContentParser.getOrParseToc(chapter.chapterNo, chapter.content, chapter.title)
+                            }
+
                             ChapterCard(
                                 chapter = chapter,
-                                progressFraction = perChapterProgress[chapter.chapterNo] ?: 0f,
-                                isLastRead = chapter.chapterNo == readingProgress.chapterNo,
-                                readHeadingKeys = perChapterReadHeadings[chapter.chapterNo] ?: emptySet(),
+                                progressFraction = progressFraction,
+                                isLastRead = isLastRead,
+                                readHeadingKeys = readHeadings,
+                                totalMinutes = totalMinutes,
+                                remainingMinutes = remainingMinutes,
+                                subheadings = subheadings,
                                 onClick = { onChapterClick(chapter) },
                                 onSubheadingClick = { headingText ->
                                     onChapterSubheadingClick(chapter, headingText)
@@ -262,9 +279,9 @@ private fun HeroBanner(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "ডিজিটাল বুক রিডার",
+                    text = bookTitle,
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                 )
             }
 
@@ -372,27 +389,15 @@ private fun ChapterCard(
     progressFraction: Float,
     isLastRead: Boolean = false,
     readHeadingKeys: Set<String> = emptySet(),
+    totalMinutes: Int,
+    remainingMinutes: Int,
+    subheadings: List<String>,
     onClick: () -> Unit,
     onSubheadingClick: (headingText: String) -> Unit
 ) {
     val isCompleted = progressFraction >= COMPLETED_THRESHOLD
     val isInProgress = progressFraction > 0f && !isCompleted
 
-    // Reading-time estimate, computed once per chapter (word-count based).
-    val totalMinutes = remember(chapter.chapterNo) {
-        ReadingTimeEstimator.totalMinutes(chapter.content)
-    }
-    val remainingMinutes = remember(chapter.chapterNo, progressFraction) {
-        ReadingTimeEstimator.remainingMinutes(chapter.content, progressFraction)
-    }
-
-    // Reuses the same table-of-contents detection used on the Reading
-    // screen, so a chapter card can show its sub-sections right on the
-    // Home screen without opening the chapter. Empty when no confirmed
-    // ToC block is detected in this chapter's content.
-    val subheadings = remember(chapter.chapterNo) {
-        ChapterContentParser.parse(chapter.content, chapter.title).tocEntries
-    }
     val hasSubheadings = subheadings.isNotEmpty()
     var subheadingsExpanded by remember(chapter.chapterNo) { mutableStateOf(false) }
     val chevronRotation by animateFloatAsState(
@@ -421,11 +426,10 @@ private fun ChapterCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .shadow(2.dp, RoundedCornerShape(16.dp)),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier

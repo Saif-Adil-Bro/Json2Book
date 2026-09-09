@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -134,7 +135,7 @@ fun QuoteCardScreen(
     onBack: () -> Unit
 ) {
     var quoteText by remember { mutableStateOf(initialQuote.ifBlank { "জ্ঞানের আলো মানুষকে অন্ধকারের গহ্বর থেকে আলোর পথে নিয়ে যায়।" }) }
-    var bookTitle by remember { mutableStateOf(initialBookTitle.ifBlank { "Dynamic Book Reader" }) }
+    var bookTitle by remember { mutableStateOf(initialBookTitle.ifBlank { "আর-রাহীকুল মাখতূম" }) }
     var authorName by remember { mutableStateOf("") }
     var selectedBackground by remember { mutableStateOf(QuoteCardBackground.INDIGO_ROYAL) }
     var cardFontSize by remember { mutableFloatStateOf(18f) }
@@ -447,7 +448,7 @@ fun QuoteCardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("উদ্ধৃতি আইকন (“) দেখান", modifier = Modifier.weight(1f))
+                Text("উদ্ধৃতি আইকন (❞) দেখান", modifier = Modifier.weight(1f))
                 Switch(checked = showQuoteIcon, onCheckedChange = { showQuoteIcon = it })
             }
             Row(
@@ -526,16 +527,15 @@ private fun QuoteCardViewContent(
                 if (showQuoteIcon) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(46.dp)
                             .clip(CircleShape)
-                            .background(bgTheme.accentColor.copy(alpha = 0.2f)),
+                            .background(bgTheme.accentColor.copy(alpha = 0.18f))
+                            .border(1.dp, bgTheme.accentColor.copy(alpha = 0.35f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "“",
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = bgTheme.accentColor
+                        StylizedQuoteIcon(
+                            modifier = Modifier.size(24.dp),
+                            tint = bgTheme.accentColor
                         )
                     }
                     Spacer(Modifier.height(14.dp))
@@ -587,7 +587,7 @@ private fun QuoteCardViewContent(
                 if (showWatermark) {
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "Dynamic Book Reader App",
+                        text = "আর-রাহীকুল মাখতূম",
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 9.sp,
                         color = bgTheme.secondaryColor.copy(alpha = 0.5f)
@@ -597,3 +597,59 @@ private fun QuoteCardViewContent(
         }
     }
 }
+
+/**
+ * Renders an ornamental double comma quotation mark (❞) icon with smooth curves
+ * and perfect centering, replacing plain ASCII quotation characters.
+ */
+@Composable
+private fun StylizedQuoteIcon(
+    modifier: Modifier = Modifier,
+    tint: Color
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val scale = minOf(w, h) / 100f
+        val offsetX = (w - 100f * scale) / 2f
+        val offsetY = (h - 100f * scale) / 2f
+
+        // Draw double comma quotation marks: ❞
+        val centers = floatArrayOf(32f, 68f)
+        for (cx in centers) {
+            val path = Path().apply {
+                val cy = 38f
+                val r = 14.5f
+
+                // Start at left-most edge of the circular head
+                moveTo((cx - r) * scale + offsetX, cy * scale + offsetY)
+                // Top half circle via cubic bezier to right-most edge
+                cubicTo(
+                    (cx - r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
+                    (cx - r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
+                    cx * scale + offsetX, (cy - r) * scale + offsetY
+                )
+                cubicTo(
+                    (cx + r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
+                    (cx + r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
+                    (cx + r) * scale + offsetX, cy * scale + offsetY
+                )
+                // Graceful sweeping outer curve down to the pointed tip
+                cubicTo(
+                    (cx + r) * scale + offsetX, (cy + 18f) * scale + offsetY,
+                    (cx + 4f) * scale + offsetX, (cy + 32f) * scale + offsetY,
+                    (cx - 14f) * scale + offsetX, (cy + 36f) * scale + offsetY
+                )
+                // Inner curve returning from tip back to the left of the head
+                cubicTo(
+                    (cx - 8f) * scale + offsetX, (cy + 26f) * scale + offsetY,
+                    (cx - r) * scale + offsetX, (cy + 14f) * scale + offsetY,
+                    (cx - r) * scale + offsetX, cy * scale + offsetY
+                )
+                close()
+            }
+            drawPath(path = path, color = tint)
+        }
+    }
+}
+

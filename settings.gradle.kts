@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DynamicBookReader"
+rootProject.name = "Ar-Raheeq Al-Makhtum"
 include(":app")

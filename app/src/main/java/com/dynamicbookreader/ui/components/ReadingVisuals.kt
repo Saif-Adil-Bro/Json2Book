@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import com.dynamicbookreader.ui.screens.FootnoteAwareText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -350,12 +351,11 @@ fun PagedReadingContent(
                         end = 22.dp
                     )
             ) {
-                SelectionContainer {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                    ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                ) {
                         // On first page, show chapter header
                         if (pageIndex == 0) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -487,28 +487,29 @@ fun PagedReadingContent(
                                     )
                                     .pointerInput(block.plainText) {
                                         detectTapGestures(
-                                            onLongPress = {
+                                            onDoubleTap = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 onParagraphLongPress(globalIndex, block.plainText)
                                             }
                                         )
                                     }
                             ) {
-                                if (!hasFootnotes) {
-                                    Text(
-                                        text = annotated,
-                                        style = baseStyle
-                                    )
-                                } else {
-                                    Text(
-                                        text = annotated,
-                                        style = baseStyle,
-                                        modifier = Modifier.pointerInput(annotated) {
-                                            detectTapGestures { offset ->
-                                                annotated.getStringAnnotations("footnote", 0, annotated.length)
-                                                    .firstOrNull()?.let { onFootnoteClick(it.item) }
+                                SelectionContainer {
+                                    if (!hasFootnotes) {
+                                        Text(
+                                            text = annotated,
+                                            style = baseStyle
+                                        )
+                                    } else {
+                                        FootnoteAwareText(
+                                            text = annotated,
+                                            style = baseStyle,
+                                            onFootnoteClick = { key ->
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                onFootnoteClick(key)
                                             }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -561,7 +562,6 @@ fun PagedReadingContent(
                             }
                         }
                     }
-                }
             }
         }
 

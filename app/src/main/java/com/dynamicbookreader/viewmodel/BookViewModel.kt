@@ -25,8 +25,11 @@ import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.ui.theme.TextAlignOption
 import com.dynamicbookreader.utils.BengaliTtsManager
+import com.dynamicbookreader.utils.ChapterContentParser
 import com.dynamicbookreader.utils.JsonParser
+import com.dynamicbookreader.utils.ReadingTimeEstimator
 import com.dynamicbookreader.utils.TtsPlaybackState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -201,12 +204,23 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Public API: Book / Chapter ───────────────────────────────────────────
 
+    private fun preWarmChapterCache(chapters: List<Chapter>) {
+        viewModelScope.launch(Dispatchers.Default) {
+            chapters.forEach { chapter ->
+                ReadingTimeEstimator.totalMinutes(chapter.chapterNo, chapter.content)
+                ChapterContentParser.getOrParseToc(chapter.chapterNo, chapter.content, chapter.title)
+            }
+        }
+    }
+
     fun loadBook() {
         viewModelScope.launch {
             _uiState.value = BookUiState.Loading
             when (val result = bookRepository.getBookData()) {
-                is JsonParser.Result.Success ->
+                is JsonParser.Result.Success -> {
                     _uiState.value = BookUiState.Success(result.data)
+                    preWarmChapterCache(result.data.chapters)
+                }
                 is JsonParser.Result.Error ->
                     _uiState.value = BookUiState.Error(result.message)
             }
@@ -216,9 +230,13 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     fun reloadBookFromSource() {
         viewModelScope.launch {
             _uiState.value = BookUiState.Loading
+            ReadingTimeEstimator.clearCache()
+            ChapterContentParser.clearCache()
             when (val result = bookRepository.getBookData(forceRefresh = true)) {
-                is JsonParser.Result.Success ->
+                is JsonParser.Result.Success -> {
                     _uiState.value = BookUiState.Success(result.data)
+                    preWarmChapterCache(result.data.chapters)
+                }
                 is JsonParser.Result.Error ->
                     _uiState.value = BookUiState.Error(result.message)
             }

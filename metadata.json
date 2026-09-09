@@ -1,6 +1,6 @@
 {
-  "name": "Dynamic Book Reader",
-  "description": "A dynamic book reader application with Bengali and English support, customizable reading preferences, progress tracking, and chapter navigation.",
+  "name": "আর-রাহীকুল মাখতূম",
+  "description": "আর-রাহীকুল মাখতূম - পূর্ণাঙ্গ সিরাত গ্রন্থ ও আধুনিক বুক রিডার অ্যাপ।",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

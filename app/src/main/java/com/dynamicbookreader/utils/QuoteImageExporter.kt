@@ -59,7 +59,7 @@ object QuoteImageExporter {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, imageUri)
-            putExtra(Intent.EXTRA_TEXT, "\"$quoteText\"\n\n— Dynamic Book Reader")
+            putExtra(Intent.EXTRA_TEXT, "\"$quoteText\"\n\n— আর-রাহীকুল মাখতূম")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(intent, "উক্তি কার্ড শেয়ার করুন"))

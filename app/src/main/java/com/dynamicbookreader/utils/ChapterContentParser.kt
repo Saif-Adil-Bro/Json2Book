@@ -59,6 +59,32 @@ object ChapterContentParser {
         val blocks: List<ContentBlock>
     )
 
+    private val parsedChapterCache = java.util.concurrent.ConcurrentHashMap<Int, ParsedChapter>()
+    private val tocCache = java.util.concurrent.ConcurrentHashMap<Int, List<String>>()
+
+    /**
+     * Retrieves the parsed chapter from memory cache or parses it if absent.
+     */
+    fun getOrParse(chapterNo: Int, rawContent: String, chapterTitle: String? = null): ParsedChapter {
+        return parsedChapterCache.getOrPut(chapterNo) {
+            parse(rawContent, chapterTitle)
+        }
+    }
+
+    /**
+     * Retrieves table-of-contents entries in O(1) from cache without full parsing overhead.
+     */
+    fun getOrParseToc(chapterNo: Int, rawContent: String, chapterTitle: String? = null): List<String> {
+        return tocCache.getOrPut(chapterNo) {
+            getOrParse(chapterNo, rawContent, chapterTitle).tocEntries
+        }
+    }
+
+    fun clearCache() {
+        parsedChapterCache.clear()
+        tocCache.clear()
+    }
+
     /**
      * Parses [rawContent] into a [ParsedChapter].
      *
@@ -113,10 +139,9 @@ object ChapterContentParser {
         val bodyPlainLines = plainLines.subList(bodyStartIndex, plainLines.size)
         val bodyRawLines = rawLines.subList(bodyStartIndex, rawLines.size)
 
-        // Confirm each candidate: does it reappear verbatim later in the body?
-        val confirmed = candidates.filter { candidate ->
-            bodyPlainLines.any { it == candidate }
-        }
+        // Fast O(1) set lookup to confirm each candidate: does it reappear verbatim later in the body?
+        val bodyPlainSet = bodyPlainLines.toHashSet()
+        val confirmed = candidates.filter { it in bodyPlainSet }
 
         // Running counter for footnote display numbers, assigned in the
         // order markers are first encountered across the chapter.

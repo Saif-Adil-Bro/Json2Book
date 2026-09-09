@@ -417,7 +417,7 @@ private fun ReadingContent(
     }
 
     val parsedChapter = remember(chapter.chapterNo) {
-        ChapterContentParser.parse(chapter.content, chapter.title)
+        ChapterContentParser.getOrParse(chapter.chapterNo, chapter.content, chapter.title)
     }
     val readableParagraphs = remember(parsedChapter) {
         parsedChapter.blocks.map { it.plainText }
@@ -572,8 +572,6 @@ private fun ReadingContent(
         }
     }
 
-    var selectionResetKey by remember { mutableIntStateOf(0) }
-
     PaperTextureBackground(
         readingTheme = readingTheme,
         paperTextureEnabled = paperTextureEnabled
@@ -615,30 +613,30 @@ private fun ReadingContent(
                 }
             )
         } else {
-            key(selectionResetKey) {
-                SelectionContainer {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(settingsPanelVisible) {
-                                detectTapGestures {
-                                    selectionResetKey++
-                                    if (!settingsPanelVisible) {
-                                        controlsVisible = !controlsVisible
-                                    }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                if (!settingsPanelVisible) {
+                                    controlsVisible = !controlsVisible
                                 }
-                            },
-                        contentPadding = PaddingValues(
-                            top = if (controlsVisible) 76.dp else 24.dp,
-                            bottom = if (ttsState.isPlaying || ttsState.isPaused) 160.dp else if (controlsVisible) 100.dp else 40.dp,
-                            start = 20.dp,
-                            end = 20.dp
+                            }
                         )
-                    ) {
-                        // Header item
-                        item(key = "header") {
-                            Column {
+                    },
+                contentPadding = PaddingValues(
+                    top = if (controlsVisible) 76.dp else 24.dp,
+                    bottom = if (ttsState.isPlaying || ttsState.isPaused) 160.dp else if (controlsVisible) 100.dp else 40.dp,
+                    start = 20.dp,
+                    end = 20.dp
+                )
+            ) {
+                // Header item
+                item(key = "header") {
+                    SelectionContainer {
+                        Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = "অধ্যায় ${chapter.chapterNo}",
@@ -719,17 +717,17 @@ private fun ReadingContent(
                                 Spacer(Modifier.height(if (hasToc) 16.dp else 24.dp))
                             }
                         }
+                    }
 
-                        // Collapsible ToC
-                        if (hasToc) {
-                            item(key = "toc_card") {
-                                DisableSelection {
-                                    TocCard(
-                                        entries = parsedChapter.tocEntries,
-                                        fontFamily = fontFamily,
-                                        banglaFont = banglaFont,
-                                        expanded = tocExpanded,
-                                        onToggleExpanded = { tocExpanded = !tocExpanded },
+                    // Collapsible ToC
+                    if (hasToc) {
+                        item(key = "toc_card") {
+                            TocCard(
+                                entries = parsedChapter.tocEntries,
+                                fontFamily = fontFamily,
+                                banglaFont = banglaFont,
+                                expanded = tocExpanded,
+                                onToggleExpanded = { tocExpanded = !tocExpanded },
                                         onEntryClick = { entry ->
                                             val headingKey = tocEntryToHeadingKey[entry]
                                             val targetIndex = headingKey?.let { headingIndexMap[it] }
@@ -742,7 +740,6 @@ private fun ReadingContent(
                                         modifier = Modifier.padding(bottom = 24.dp)
                                     )
                                 }
-                            }
                         } else {
                             item(key = "header_divider") {
                                 HorizontalDivider(
@@ -819,27 +816,39 @@ private fun ReadingContent(
                                     )
                                     .pointerInput(block.plainText) {
                                         detectTapGestures(
-                                            onLongPress = {
+                                            onDoubleTap = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 selectedParagraphForAction = Pair(index, block.plainText)
+                                            },
+                                            onTap = {
+                                                if (!settingsPanelVisible) {
+                                                    controlsVisible = !controlsVisible
+                                                }
                                             }
                                         )
                                     }
                             ) {
-                                if (!hasFootnotes) {
-                                    Text(
-                                        text = annotated,
-                                        style = baseStyle
-                                    )
-                                } else {
-                                    FootnoteAwareText(
-                                        text = annotated,
-                                        style = baseStyle,
-                                        onFootnoteClick = { key ->
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            selectedFootnoteKey = key
-                                        }
-                                    )
+                                SelectionContainer {
+                                    if (!hasFootnotes) {
+                                        Text(
+                                            text = annotated,
+                                            style = baseStyle
+                                        )
+                                    } else {
+                                        FootnoteAwareText(
+                                            text = annotated,
+                                            style = baseStyle,
+                                            onFootnoteClick = { key ->
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                selectedFootnoteKey = key
+                                            },
+                                            onNonFootnoteClick = {
+                                                if (!settingsPanelVisible) {
+                                                    controlsVisible = !controlsVisible
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -903,8 +912,6 @@ private fun ReadingContent(
                             }
                         }
                     }
-                }
-            }
         }
 
         // ── Top App Bar ─────────────────────────────────────────────────────
@@ -987,7 +994,7 @@ private fun ReadingContent(
                     IconButton(
                         onClick = {
                             val excerpt = parsedChapter.blocks.firstOrNull()?.plainText?.take(300) ?: ""
-                            val shareText = "📖 ${chapter.title} (অধ্যায় ${chapter.chapterNo})\n\n\"$excerpt...\"\n\n— Dynamic Book Reader"
+                            val shareText = "📖 ${chapter.title} (অধ্যায় ${chapter.chapterNo})\n\n\"$excerpt...\"\n\n— আর-রাহীকুল মাখতূম"
                             val sendIntent = Intent().apply {
                                 action = Intent.ACTION_SEND
                                 putExtra(Intent.EXTRA_TEXT, shareText)
@@ -1236,7 +1243,7 @@ private fun ReadingContent(
                     headlineContent = { Text("উক্তি শেয়ার করুন") },
                     leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
                     modifier = Modifier.clickable {
-                        val shareText = "📖 ${chapter.title}\n\n\"$paraText\"\n\n— Dynamic Book Reader"
+                        val shareText = "📖 ${chapter.title}\n\n\"$paraText\"\n\n— আর-রাহীকুল মাখতূম"
                         val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, shareText)
@@ -1343,10 +1350,11 @@ private fun FootnoteDialog(
 // ── Footnote-aware text renderer ────────────────────────────────────────────
 
 @Composable
-private fun FootnoteAwareText(
+internal fun FootnoteAwareText(
     text: AnnotatedString,
     style: androidx.compose.ui.text.TextStyle,
     onFootnoteClick: (String) -> Unit,
+    onNonFootnoteClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
@@ -1355,13 +1363,21 @@ private fun FootnoteAwareText(
         text = text,
         style = style,
         modifier = modifier.pointerInput(text) {
-            detectTapGestures { offset ->
-                val result = layoutResult ?: return@detectTapGestures
-                val position = result.getOffsetForPosition(offset)
-                text.getStringAnnotations(tag = "footnote", start = position, end = position)
-                    .firstOrNull()
-                    ?.let { onFootnoteClick(it.item) }
-            }
+            detectTapGestures(
+                onTap = { offset ->
+                    val result = layoutResult
+                    if (result != null) {
+                        val position = result.getOffsetForPosition(offset)
+                        val footnote = text.getStringAnnotations(tag = "footnote", start = position, end = position)
+                            .firstOrNull()
+                        if (footnote != null) {
+                            onFootnoteClick(footnote.item)
+                            return@detectTapGestures
+                        }
+                    }
+                    onNonFootnoteClick?.invoke()
+                }
+            )
         },
         onTextLayout = { layoutResult = it }
     )

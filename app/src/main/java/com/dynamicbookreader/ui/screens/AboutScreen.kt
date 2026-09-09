@@ -60,7 +60,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(16.dp))
 
             Text(
-                text = "ডিজিটাল বুক রিডার",
+                text = "আর-রাহীকুল মাখতূম",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
