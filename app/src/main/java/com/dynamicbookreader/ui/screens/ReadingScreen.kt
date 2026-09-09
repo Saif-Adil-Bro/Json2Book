@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -51,6 +52,8 @@ import com.dynamicbookreader.data.model.Chapter
 import com.dynamicbookreader.ui.components.PagedReadingContent
 import com.dynamicbookreader.ui.components.PaperTextureBackground
 import com.dynamicbookreader.ui.components.ReadingProgressBubble
+import com.dynamicbookreader.ui.theme.ArabicFontFamily
+import com.dynamicbookreader.ui.theme.BanglaFontFamily
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingMode
 import com.dynamicbookreader.ui.theme.ReadingTheme
@@ -86,10 +89,13 @@ fun ReadingScreen(
     val fontSize by viewModel.fontSize.collectAsState()
     val lineHeight by viewModel.lineHeight.collectAsState()
     val readingTheme by viewModel.readingTheme.collectAsState()
+    val banglaFont by viewModel.banglaFont.collectAsState()
+    val arabicFont by viewModel.arabicFont.collectAsState()
     val fontFamily by viewModel.fontFamily.collectAsState()
     val textAlign by viewModel.textAlign.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     val readingProgress by viewModel.readingProgress.collectAsState()
+    val perChapterProgress by viewModel.perChapterProgress.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val ttsState by viewModel.ttsPlaybackState.collectAsState()
     val ttsSleepTimerMinutes by viewModel.ttsSleepTimerMinutes.collectAsState()
@@ -149,6 +155,8 @@ fun ReadingScreen(
                 lineHeight = lineHeight,
                 readingTheme = readingTheme,
                 fontFamily = fontFamily,
+                banglaFont = banglaFont,
+                arabicFont = arabicFont,
                 textAlign = textAlign,
                 keepScreenOn = keepScreenOn,
                 bookmarks = bookmarks,
@@ -159,7 +167,8 @@ fun ReadingScreen(
                 onSetSleepTimer = { viewModel.setTtsSleepTimer(it) },
                 savedScrollFraction = readingProgress
                     .takeIf { it.chapterNo == chapterNo }
-                    ?.scrollFraction,
+                    ?.scrollFraction
+                    ?: perChapterProgress[chapterNo],
                 onScrollProgressChanged = { fraction ->
                     viewModel.updateReadingProgress(chapterNo, state.chapter.title, fraction)
                 },
@@ -188,6 +197,8 @@ fun ReadingScreen(
                 onLineHeightDecrease = { viewModel.decreaseLineHeight() },
                 onThemeChange = { viewModel.setReadingTheme(it) },
                 onFontFamilyChange = { viewModel.setFontFamily(it) },
+                onBanglaFontChange = { viewModel.setBanglaFont(it) },
+                onArabicFontChange = { viewModel.setArabicFont(it) },
                 onTextAlignChange = { viewModel.setTextAlign(it) },
                 onKeepScreenOnChange = { viewModel.setKeepScreenOn(it) },
                 readingMode = readingMode,
@@ -333,7 +344,9 @@ private fun ReadingContent(
     fontSize: Float,
     lineHeight: Float,
     readingTheme: ReadingTheme,
-    fontFamily: ReadingFontFamily,
+    fontFamily: ReadingFontFamily = ReadingFontFamily.SOLAIMAN_LIPI,
+    banglaFont: BanglaFontFamily = BanglaFontFamily.SOLAIMAN_LIPI,
+    arabicFont: ArabicFontFamily = ArabicFontFamily.AMIRI,
     textAlign: TextAlignOption,
     keepScreenOn: Boolean,
     bookmarks: List<Bookmark>,
@@ -353,7 +366,9 @@ private fun ReadingContent(
     onLineHeightIncrease: () -> Unit,
     onLineHeightDecrease: () -> Unit,
     onThemeChange: (ReadingTheme) -> Unit,
-    onFontFamilyChange: (ReadingFontFamily) -> Unit,
+    onFontFamilyChange: (ReadingFontFamily) -> Unit = {},
+    onBanglaFontChange: (BanglaFontFamily) -> Unit = {},
+    onArabicFontChange: (ArabicFontFamily) -> Unit = {},
     onTextAlignChange: (TextAlignOption) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit,
     readingMode: ReadingMode,
@@ -410,7 +425,15 @@ private fun ReadingContent(
     val hasToc = parsedChapter.tocEntries.isNotEmpty()
     val totalItemCount = parsedChapter.blocks.size + 2 + (if (hasToc) 1 else 0)
 
-    val listState = rememberLazyListState()
+    val initialTargetIndex = remember(chapter.chapterNo, targetHeading) {
+        if (targetHeading.isNullOrBlank() && savedScrollFraction != null && savedScrollFraction > 0.01f && totalItemCount > 1) {
+            (savedScrollFraction * (totalItemCount - 1)).toInt().coerceIn(0, totalItemCount - 1)
+        } else {
+            0
+        }
+    }
+
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialTargetIndex)
     val backgroundColor = MaterialTheme.colorScheme.background
     val textColor = MaterialTheme.colorScheme.onBackground
 
@@ -429,12 +452,24 @@ private fun ReadingContent(
         parsedChapter.tocEntries.associateWith { ChapterContentParser.headingKey(it, 0) }
     }
 
-    LaunchedEffect(chapter.chapterNo, targetHeading) {
-        if (targetHeading.isNullOrBlank()) return@LaunchedEffect
-        val headingKey = tocEntryToHeadingKey[targetHeading] ?: return@LaunchedEffect
-        val targetIndex = headingIndexMap[headingKey] ?: return@LaunchedEffect
-        kotlinx.coroutines.delay(50)
-        listState.scrollToItem(targetIndex)
+    var hasAutoRestoredScroll by remember(chapter.chapterNo) { mutableStateOf(false) }
+
+    LaunchedEffect(chapter.chapterNo, targetHeading, savedScrollFraction) {
+        if (!targetHeading.isNullOrBlank()) {
+            val headingKey = tocEntryToHeadingKey[targetHeading] ?: return@LaunchedEffect
+            val targetIndex = headingIndexMap[headingKey] ?: return@LaunchedEffect
+            kotlinx.coroutines.delay(50)
+            listState.scrollToItem(targetIndex)
+        } else if (!hasAutoRestoredScroll && savedScrollFraction != null && savedScrollFraction > 0.01f && totalItemCount > 1) {
+            hasAutoRestoredScroll = true
+            val targetIndex = (savedScrollFraction * (totalItemCount - 1))
+                .toInt()
+                .coerceIn(0, totalItemCount - 1)
+            if (targetIndex > 0) {
+                kotlinx.coroutines.delay(50)
+                listState.scrollToItem(targetIndex)
+            }
+        }
     }
 
     // Auto-scroll when TTS reads next paragraph
@@ -446,26 +481,64 @@ private fun ReadingContent(
         }
     }
 
-    val currentFraction by remember {
+    var pagedReadingFraction by remember(chapter.chapterNo) {
+        mutableFloatStateOf(savedScrollFraction ?: 0f)
+    }
+    var pagedIsScrolling by remember { mutableStateOf(false) }
+
+    var maxFractionReached by remember(chapter.chapterNo) {
+        mutableFloatStateOf(savedScrollFraction ?: 0f)
+    }
+
+    val currentFraction by remember(readingMode, pagedReadingFraction) {
         derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val total = layoutInfo.totalItemsCount
-            if (total <= 1) return@derivedStateOf 0f
+            if (readingMode == ReadingMode.PAGE_FLIP) {
+                pagedReadingFraction
+            } else {
+                val layoutInfo = listState.layoutInfo
+                val total = layoutInfo.totalItemsCount
+                if (total <= 1) return@derivedStateOf 0f
 
-            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
-            if (lastVisible != null && lastVisible.index == total - 1) {
-                val viewportEnd = layoutInfo.viewportEndOffset
-                val itemBottom = lastVisible.offset + lastVisible.size
-                if (itemBottom <= viewportEnd) return@derivedStateOf 1f
+                val visibleItems = layoutInfo.visibleItemsInfo
+                if (visibleItems.isEmpty()) return@derivedStateOf 0f
+
+                val lastVisible = visibleItems.last()
+                // If end marker (total - 2) or nav buttons (total - 1) are in view, chapter is 100% completed
+                if (lastVisible.index >= total - 2) {
+                    return@derivedStateOf 1f
+                }
+
+                val firstIndex = listState.firstVisibleItemIndex
+                val firstOffset = listState.firstVisibleItemScrollOffset
+                val firstItemSize = visibleItems.firstOrNull()?.size ?: 1
+                val fractionalOffset = if (firstItemSize > 0) firstOffset.toFloat() / firstItemSize else 0f
+
+                val visibleCount = visibleItems.size
+                val maxScrollable = (total - visibleCount + 1).coerceAtLeast(1)
+                ((firstIndex + fractionalOffset) / maxScrollable).coerceIn(0f, 1f)
             }
+        }
+    }
 
-            val firstIndex = listState.firstVisibleItemIndex
-            firstIndex.toFloat() / (total - 1).toFloat()
+    val effectiveFraction by remember(currentFraction, maxFractionReached) {
+        derivedStateOf {
+            maxOf(currentFraction, maxFractionReached)
         }
     }
 
     LaunchedEffect(currentFraction) {
-        onScrollProgressChanged(currentFraction)
+        if (currentFraction > maxFractionReached) {
+            maxFractionReached = currentFraction
+        }
+        val eff = maxOf(currentFraction, maxFractionReached)
+        onScrollProgressChanged(eff)
+    }
+
+    val latestEffectiveFraction by rememberUpdatedState(effectiveFraction)
+
+    BackHandler {
+        onLeaveScreen(latestEffectiveFraction)
+        onBack()
     }
 
     val sortedHeadingEntries = remember(headingIndexMap) {
@@ -493,14 +566,11 @@ private fun ReadingContent(
             }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { onLeaveScreen(currentFraction) }
+    DisposableEffect(chapter.chapterNo) {
+        onDispose {
+            onLeaveScreen(latestEffectiveFraction)
+        }
     }
-
-    val showResumeButton = savedScrollFraction != null &&
-            savedScrollFraction > 0.02f &&
-            listState.firstVisibleItemIndex == 0 &&
-            listState.firstVisibleItemScrollOffset == 0
 
     var selectionResetKey by remember { mutableIntStateOf(0) }
 
@@ -515,11 +585,15 @@ private fun ReadingContent(
                 fontSize = fontSize,
                 lineHeight = lineHeight,
                 fontFamily = fontFamily,
+                banglaFont = banglaFont,
+                arabicFont = arabicFont,
                 textAlign = textAlign,
                 textColor = textColor,
                 ttsState = ttsState,
                 initialFraction = savedScrollFraction ?: 0f,
-                onPageChanged = { fraction ->
+                onPageProgressChanged = { fraction, isScrolling ->
+                    pagedReadingFraction = fraction
+                    pagedIsScrolling = isScrolling
                     onScrollProgressChanged(fraction)
                 },
                 onParagraphLongPress = { idx, text ->
@@ -569,7 +643,7 @@ private fun ReadingContent(
                                     Text(
                                         text = "অধ্যায় ${chapter.chapterNo}",
                                         style = MaterialTheme.typography.labelLarge.copy(
-                                            fontFamily = fontFamily.fontFamily
+                                            fontFamily = banglaFont.fontFamily
                                         ),
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.weight(1f)
@@ -582,7 +656,7 @@ private fun ReadingContent(
                                             Text(
                                                 text = "পাতা ${chapter.pageRange}",
                                                 style = MaterialTheme.typography.labelMedium.copy(
-                                                    fontFamily = fontFamily.fontFamily
+                                                    fontFamily = banglaFont.fontFamily
                                                 ),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -594,7 +668,7 @@ private fun ReadingContent(
                                 Text(
                                     text = chapter.title,
                                     style = MaterialTheme.typography.headlineMedium.copy(
-                                        fontFamily = fontFamily.fontFamily,
+                                        fontFamily = banglaFont.fontFamily,
                                         fontSize = (fontSize + 4).sp,
                                         fontWeight = FontWeight.Bold,
                                         lineHeight = (fontSize + 14).sp,
@@ -613,7 +687,7 @@ private fun ReadingContent(
                                             Text(
                                                 text = "সংক্ষিপ্ত বিবরণ",
                                                 style = MaterialTheme.typography.labelLarge.copy(
-                                                    fontFamily = fontFamily.fontFamily
+                                                    fontFamily = banglaFont.fontFamily
                                                 ),
                                                 color = MaterialTheme.colorScheme.primary,
                                                 fontWeight = FontWeight.Medium
@@ -633,7 +707,7 @@ private fun ReadingContent(
                                         Text(
                                             text = chapter.subtitle,
                                             style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontFamily = fontFamily.fontFamily,
+                                                fontFamily = banglaFont.fontFamily,
                                                 fontSize = (fontSize - 2).coerceAtLeast(12f).sp,
                                                 lineHeight = (fontSize + 4).sp
                                             ),
@@ -653,6 +727,7 @@ private fun ReadingContent(
                                     TocCard(
                                         entries = parsedChapter.tocEntries,
                                         fontFamily = fontFamily,
+                                        banglaFont = banglaFont,
                                         expanded = tocExpanded,
                                         onToggleExpanded = { tocExpanded = !tocExpanded },
                                         onEntryClick = { entry ->
@@ -688,7 +763,7 @@ private fun ReadingContent(
 
                             val baseStyle = if (isHeading) {
                                 MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = fontFamily.fontFamily,
+                                    fontFamily = banglaFont.fontFamily,
                                     fontSize = (fontSize + 1).sp,
                                     fontWeight = FontWeight.Bold,
                                     lineHeight = (fontSize * lineHeight).sp,
@@ -697,7 +772,7 @@ private fun ReadingContent(
                                 )
                             } else {
                                 MaterialTheme.typography.bodyLarge.copy(
-                                    fontFamily = fontFamily.fontFamily,
+                                    fontFamily = banglaFont.fontFamily,
                                     fontSize = fontSize.sp,
                                     lineHeight = (fontSize * lineHeight).sp,
                                     color = textColor,
@@ -706,6 +781,25 @@ private fun ReadingContent(
                             }
 
                             val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
+                            val footnoteColor = MaterialTheme.colorScheme.primary
+                            val annotated = remember(block, banglaFont, arabicFont, footnoteColor, fontSize) {
+                                if (hasFootnotes) {
+                                    BilingualTextHelper.buildContentBlockAnnotatedString(
+                                        segments = block.segments,
+                                        banglaFont = banglaFont.fontFamily,
+                                        arabicFont = arabicFont.fontFamily,
+                                        footnoteColor = footnoteColor,
+                                        fontSize = fontSize
+                                    )
+                                } else {
+                                    BilingualTextHelper.buildBilingualAnnotatedString(
+                                        text = block.plainText,
+                                        banglaFont = banglaFont.fontFamily,
+                                        arabicFont = arabicFont.fontFamily,
+                                        baseFontSizeSp = if (isHeading) fontSize + 1 else fontSize
+                                    )
+                                }
+                            }
 
                             Box(
                                 modifier = Modifier
@@ -734,38 +828,10 @@ private fun ReadingContent(
                             ) {
                                 if (!hasFootnotes) {
                                     Text(
-                                        text = block.plainText,
+                                        text = annotated,
                                         style = baseStyle
                                     )
                                 } else {
-                                    val footnoteColor = MaterialTheme.colorScheme.primary
-                                    val annotated = remember(block, footnoteColor, fontSize) {
-                                        buildAnnotatedString {
-                                            block.segments.forEach { segment ->
-                                                when (segment) {
-                                                    is ChapterContentParser.TextSegment.Plain ->
-                                                        append(segment.text)
-                                                    is ChapterContentParser.TextSegment.FootnoteRef -> {
-                                                        pushStringAnnotation(
-                                                            tag = "footnote",
-                                                            annotation = segment.key
-                                                        )
-                                                        withStyle(
-                                                            SpanStyle(
-                                                                color = footnoteColor,
-                                                                fontWeight = FontWeight.Bold,
-                                                                baselineShift = BaselineShift.Superscript,
-                                                                fontSize = (fontSize * 0.7f).sp
-                                                            )
-                                                        ) {
-                                                            append("[${segment.displayNumber}]")
-                                                        }
-                                                        pop()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
                                     FootnoteAwareText(
                                         text = annotated,
                                         style = baseStyle,
@@ -789,7 +855,7 @@ private fun ReadingContent(
                                     Text(
                                         text = "﴿ সমাপ্ত ﴾",
                                         style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontFamily = fontFamily.fontFamily
+                                            fontFamily = banglaFont.fontFamily
                                         ),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -810,6 +876,7 @@ private fun ReadingContent(
                                     OutlinedButton(
                                         onClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onLeaveScreen(latestEffectiveFraction)
                                             onPreviousChapter()
                                         },
                                         modifier = Modifier.weight(1f)
@@ -823,6 +890,7 @@ private fun ReadingContent(
                                     Button(
                                         onClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onLeaveScreen(latestEffectiveFraction)
                                             onNextChapter()
                                         },
                                         modifier = Modifier.weight(1f)
@@ -858,7 +926,10 @@ private fun ReadingContent(
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        onLeaveScreen(latestEffectiveFraction)
+                        onBack()
+                    }) {
                         Icon(
                             Icons.Default.ArrowBack,
                             contentDescription = "ফিরে যান",
@@ -945,39 +1016,10 @@ private fun ReadingContent(
             }
         }
 
-        // ── Resume Position FAB ──────────────────────────────────────────────
-        AnimatedVisibility(
-            visible = showResumeButton && !settingsPanelVisible,
-            enter = fadeIn(tween(250)) + scaleIn(tween(250), initialScale = 0.8f),
-            exit = fadeOut(tween(150)),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 24.dp)
-        ) {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    savedScrollFraction?.let { fraction ->
-                        coroutineScope.launch {
-                            val targetIndex = (fraction * (totalItemCount - 1))
-                                .toInt()
-                                .coerceIn(0, totalItemCount - 1)
-                            listState.animateScrollToItem(targetIndex)
-                        }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                icon = {
-                    Icon(Icons.Default.BookmarkBorder, contentDescription = null)
-                },
-                text = { Text("শেষ পঠিত অংশে যান") }
-            )
-        }
-
         // ── Scroll progress indicator ───────────────────────────────────────
         if (totalItemCount > 1) {
             LinearProgressIndicator(
-                progress = { currentFraction },
+                progress = { effectiveFraction },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(3.dp)
@@ -989,8 +1031,8 @@ private fun ReadingContent(
 
         // ── Floating Reading Progress Bubble (Scroll & Read Indicator) ─────
         ReadingProgressBubble(
-            progressFraction = currentFraction,
-            isScrolling = if (readingMode == ReadingMode.PAGE_FLIP) false else listState.isScrollInProgress,
+            progressFraction = effectiveFraction,
+            isScrolling = if (readingMode == ReadingMode.PAGE_FLIP) pagedIsScrolling else listState.isScrollInProgress,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 12.dp)
@@ -1011,7 +1053,7 @@ private fun ReadingContent(
                 shadowElevation = 2.dp
             ) {
                 Text(
-                    text = "${(currentFraction * 100).toInt()}% পঠিত",
+                    text = "${(effectiveFraction * 100).toInt()}% পঠিত",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -1064,6 +1106,8 @@ private fun ReadingContent(
                 lineHeight = lineHeight,
                 currentTheme = readingTheme,
                 currentFontFamily = fontFamily,
+                currentBanglaFont = banglaFont,
+                currentArabicFont = arabicFont,
                 currentTextAlign = textAlign,
                 keepScreenOn = keepScreenOn,
                 currentReadingMode = readingMode,
@@ -1091,6 +1135,14 @@ private fun ReadingContent(
                 onFontFamilyChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onFontFamilyChange(it)
+                },
+                onBanglaFontChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onBanglaFontChange(it)
+                },
+                onArabicFontChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onArabicFontChange(it)
                 },
                 onTextAlignChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1320,7 +1372,8 @@ private fun FootnoteAwareText(
 @Composable
 private fun TocCard(
     entries: List<String>,
-    fontFamily: ReadingFontFamily,
+    fontFamily: ReadingFontFamily = ReadingFontFamily.SOLAIMAN_LIPI,
+    banglaFont: BanglaFontFamily = BanglaFontFamily.SOLAIMAN_LIPI,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
     onEntryClick: (String) -> Unit,
@@ -1357,7 +1410,7 @@ private fun TocCard(
                 Text(
                     text = "সূচিপত্র",
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = fontFamily.fontFamily
+                        fontFamily = banglaFont.fontFamily
                     ),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -1391,7 +1444,7 @@ private fun TocCard(
                             Text(
                                 text = "${index + 1}.",
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = fontFamily.fontFamily
+                                    fontFamily = banglaFont.fontFamily
                                 ),
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(end = 10.dp)
@@ -1399,7 +1452,7 @@ private fun TocCard(
                             Text(
                                 text = entry,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = fontFamily.fontFamily
+                                    fontFamily = banglaFont.fontFamily
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.weight(1f)
@@ -1425,7 +1478,9 @@ private fun ReadingSettingsPanel(
     fontSize: Float,
     lineHeight: Float,
     currentTheme: ReadingTheme,
-    currentFontFamily: ReadingFontFamily,
+    currentFontFamily: ReadingFontFamily = ReadingFontFamily.SOLAIMAN_LIPI,
+    currentBanglaFont: BanglaFontFamily = BanglaFontFamily.SOLAIMAN_LIPI,
+    currentArabicFont: ArabicFontFamily = ArabicFontFamily.AMIRI,
     currentTextAlign: TextAlignOption,
     keepScreenOn: Boolean,
     currentReadingMode: ReadingMode,
@@ -1435,7 +1490,9 @@ private fun ReadingSettingsPanel(
     onLineHeightIncrease: () -> Unit,
     onLineHeightDecrease: () -> Unit,
     onThemeChange: (ReadingTheme) -> Unit,
-    onFontFamilyChange: (ReadingFontFamily) -> Unit,
+    onFontFamilyChange: (ReadingFontFamily) -> Unit = {},
+    onBanglaFontChange: (BanglaFontFamily) -> Unit = {},
+    onArabicFontChange: (ArabicFontFamily) -> Unit = {},
     onTextAlignChange: (TextAlignOption) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit,
     onReadingModeChange: (ReadingMode) -> Unit,
@@ -1583,47 +1640,198 @@ private fun ReadingSettingsPanel(
 
             Spacer(Modifier.height(16.dp))
 
-            // Font Family row
-            Text(
-                text = "ফন্ট শৈলী (Font Family)",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // ── Bangla Font Selection ─────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "বাংলা ফন্ট শৈলী (Bangla Font)",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "বাংলা ৪টি",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BanglaFontFamily.entries.chunked(2).forEach { rowFonts ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowFonts.forEach { family ->
+                            val selected = family == currentBanglaFont
+                            Surface(
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(12.dp),
+                                border = if (selected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onBanglaFontChange(family)
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = family.displayName,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontFamily = family.fontFamily
+                                            ),
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (family.isDefault) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ডিফল্ট",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        text = family.sampleText,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = family.fontFamily
+                                        ),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        color = if (selected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                        if (rowFonts.size == 1) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // ── Arabic Font Selection ──────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "আরবি ফন্ট শৈলী (Arabic Font)",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "আরবি ২টি",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ReadingFontFamily.entries.forEach { family ->
-                    val selected = family == currentFontFamily
+                ArabicFontFamily.entries.forEach { family ->
+                    val selected = family == currentArabicFont
                     Surface(
                         color = if (selected) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(12.dp),
+                        border = if (selected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
                         modifier = Modifier
                             .weight(1f)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onFontFamilyChange(family)
+                                onArabicFontChange(family)
                             }
                     ) {
                         Column(
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+                            horizontalAlignment = Alignment.Start
                         ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = family.displayName,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontFamily = family.fontFamily
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (family.isDefault) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "ডিফল্ট",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(3.dp))
                             Text(
-                                text = family.displayName,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = family.subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 10.sp,
+                                text = family.sampleText,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = family.fontFamily
+                                ),
+                                fontSize = 13.sp,
+                                maxLines = 1,
                                 color = if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                             )
                         }
                     }

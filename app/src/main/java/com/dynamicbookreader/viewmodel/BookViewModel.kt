@@ -19,6 +19,8 @@ import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Compan
 import com.dynamicbookreader.data.repository.ReadingPreferencesRepository.Companion.DEFAULT_LINE_HEIGHT
 import com.dynamicbookreader.data.repository.ReadingProgress
 import com.dynamicbookreader.data.repository.ReadingProgressRepository
+import com.dynamicbookreader.ui.theme.ArabicFontFamily
+import com.dynamicbookreader.ui.theme.BanglaFontFamily
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.ui.theme.TextAlignOption
@@ -138,8 +140,14 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
     val readingTheme: StateFlow<ReadingTheme> = prefsRepository.readingTheme
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingTheme.DAY)
 
+    val banglaFont: StateFlow<BanglaFontFamily> = prefsRepository.banglaFont
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BanglaFontFamily.SOLAIMAN_LIPI)
+
+    val arabicFont: StateFlow<ArabicFontFamily> = prefsRepository.arabicFont
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ArabicFontFamily.AMIRI)
+
     val fontFamily: StateFlow<ReadingFontFamily> = prefsRepository.fontFamily
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingFontFamily.DEFAULT)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingFontFamily.SOLAIMAN_LIPI)
 
     val textAlign: StateFlow<TextAlignOption> = prefsRepository.textAlign
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TextAlignOption.JUSTIFY)
@@ -354,6 +362,14 @@ class BookViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setReadingTheme(theme: ReadingTheme) = viewModelScope.launch {
         prefsRepository.setReadingTheme(theme)
+    }
+
+    fun setBanglaFont(family: BanglaFontFamily) = viewModelScope.launch {
+        prefsRepository.setBanglaFont(family)
+    }
+
+    fun setArabicFont(family: ArabicFontFamily) = viewModelScope.launch {
+        prefsRepository.setArabicFont(family)
     }
 
     fun setFontFamily(family: ReadingFontFamily) = viewModelScope.launch {

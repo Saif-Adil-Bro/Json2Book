@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.dynamicbookreader.ui.theme.ArabicFontFamily
+import com.dynamicbookreader.ui.theme.BanglaFontFamily
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingMode
 import com.dynamicbookreader.ui.theme.ReadingTheme
@@ -20,7 +22,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 )
 
 /**
- * Persists user reading preferences (font size, line height, font family,
+ * Persists user reading preferences (font size, line height, bangla & arabic font families,
  * text alignment, keep screen on, theme) across app sessions using Jetpack DataStore.
  */
 class ReadingPreferencesRepository(private val context: Context) {
@@ -30,6 +32,8 @@ class ReadingPreferencesRepository(private val context: Context) {
         private val KEY_LINE_HEIGHT = floatPreferencesKey("line_height")
         private val KEY_THEME = stringPreferencesKey("reading_theme")
         private val KEY_FONT_FAMILY = stringPreferencesKey("font_family")
+        private val KEY_BANGLA_FONT = stringPreferencesKey("bangla_font_family")
+        private val KEY_ARABIC_FONT = stringPreferencesKey("arabic_font_family")
         private val KEY_TEXT_ALIGN = stringPreferencesKey("text_align")
         private val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         private val KEY_READING_MODE = stringPreferencesKey("reading_mode")
@@ -60,12 +64,30 @@ class ReadingPreferencesRepository(private val context: Context) {
         }
     }
 
+    val banglaFont: Flow<BanglaFontFamily> = context.dataStore.data.map { prefs ->
+        val name = prefs[KEY_BANGLA_FONT] ?: prefs[KEY_FONT_FAMILY] ?: BanglaFontFamily.SOLAIMAN_LIPI.name
+        try {
+            BanglaFontFamily.valueOf(name)
+        } catch (e: Exception) {
+            BanglaFontFamily.SOLAIMAN_LIPI
+        }
+    }
+
+    val arabicFont: Flow<ArabicFontFamily> = context.dataStore.data.map { prefs ->
+        val name = prefs[KEY_ARABIC_FONT] ?: ArabicFontFamily.AMIRI.name
+        try {
+            ArabicFontFamily.valueOf(name)
+        } catch (e: Exception) {
+            ArabicFontFamily.AMIRI
+        }
+    }
+
     val fontFamily: Flow<ReadingFontFamily> = context.dataStore.data.map { prefs ->
-        val name = prefs[KEY_FONT_FAMILY] ?: ReadingFontFamily.DEFAULT.name
+        val name = prefs[KEY_FONT_FAMILY] ?: ReadingFontFamily.SOLAIMAN_LIPI.name
         try {
             ReadingFontFamily.valueOf(name)
         } catch (e: Exception) {
-            ReadingFontFamily.DEFAULT
+            ReadingFontFamily.SOLAIMAN_LIPI
         }
     }
 
@@ -125,9 +147,30 @@ class ReadingPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setBanglaFont(family: BanglaFontFamily) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BANGLA_FONT] = family.name
+        }
+    }
+
+    suspend fun setArabicFont(family: ArabicFontFamily) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_ARABIC_FONT] = family.name
+        }
+    }
+
     suspend fun setFontFamily(family: ReadingFontFamily) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FONT_FAMILY] = family.name
+            if (family.language == com.dynamicbookreader.ui.theme.FontLanguage.BANGLA) {
+                try {
+                    prefs[KEY_BANGLA_FONT] = BanglaFontFamily.valueOf(family.name).name
+                } catch (_: Exception) {}
+            } else {
+                try {
+                    prefs[KEY_ARABIC_FONT] = ArabicFontFamily.valueOf(family.name).name
+                } catch (_: Exception) {}
+            }
         }
     }
 

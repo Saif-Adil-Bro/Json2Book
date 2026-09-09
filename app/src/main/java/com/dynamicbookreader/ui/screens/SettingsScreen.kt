@@ -11,11 +11,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dynamicbookreader.ui.theme.ArabicFontFamily
+import com.dynamicbookreader.ui.theme.BanglaFontFamily
+import com.dynamicbookreader.ui.theme.FontLanguage
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.ui.theme.TextAlignOption
@@ -36,6 +42,8 @@ fun SettingsScreen(
     val lineHeight by viewModel.lineHeight.collectAsState()
     val readingTheme by viewModel.readingTheme.collectAsState()
     val fontFamily by viewModel.fontFamily.collectAsState()
+    val banglaFont by viewModel.banglaFont.collectAsState()
+    val arabicFont by viewModel.arabicFont.collectAsState()
     val textAlign by viewModel.textAlign.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
 
@@ -106,46 +114,200 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // Font Family Chooser
+            // Bangla Font Family Chooser
             SettingsCard {
                 Column {
-                    Text(
-                        text = "ফন্ট শৈলী (Font Family)",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "বাংলা ফন্ট শৈলী (Bangla Font)",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "বাংলা ৪টি",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BanglaFontFamily.entries.chunked(2).forEach { rowFonts ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                rowFonts.forEach { family ->
+                                    val selected = family == banglaFont
+                                    Surface(
+                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = if (selected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { viewModel.setBanglaFont(family) }
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+                                            horizontalAlignment = Alignment.Start
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = family.displayName,
+                                                    style = MaterialTheme.typography.labelMedium.copy(
+                                                        fontFamily = family.fontFamily
+                                                    ),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                if (family.isDefault) {
+                                                    Surface(
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                        shape = RoundedCornerShape(4.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "ডিফল্ট",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Spacer(Modifier.height(3.dp))
+                                            Text(
+                                                text = family.sampleText,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontFamily = family.fontFamily
+                                                ),
+                                                fontSize = 13.sp,
+                                                maxLines = 1,
+                                                color = if (selected) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                            )
+                                        }
+                                    }
+                                }
+                                if (rowFonts.size == 1) {
+                                    Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Arabic Font Family Chooser
+            SettingsCard {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "আরবি ফন্ট শৈলী (Arabic Font)",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "আরবি ২টি",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ReadingFontFamily.entries.forEach { family ->
-                            val selected = family == fontFamily
+                        ArabicFontFamily.entries.forEach { family ->
+                            val selected = family == arabicFont
                             Surface(
                                 color = if (selected) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(12.dp),
+                                border = if (selected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable { viewModel.setFontFamily(family) }
+                                    .clickable { viewModel.setArabicFont(family) }
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+                                    horizontalAlignment = Alignment.Start
                                 ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = family.displayName,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontFamily = family.fontFamily
+                                            ),
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (family.isDefault) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ডিফল্ট",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.height(3.dp))
                                     Text(
-                                        text = family.displayName,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = family.subtitle,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = 10.sp,
+                                        text = family.sampleText,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = family.fontFamily
+                                        ),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
                                         color = if (selected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                     )
                                 }
                             }

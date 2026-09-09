@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dynamicbookreader.data.model.Chapter
+import com.dynamicbookreader.ui.theme.ArabicFontFamily
+import com.dynamicbookreader.ui.theme.BanglaFontFamily
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.ReadingTheme
 import com.dynamicbookreader.ui.theme.TextAlignOption
@@ -227,12 +229,14 @@ fun PagedReadingContent(
     parsedChapter: ChapterContentParser.ParsedChapter,
     fontSize: Float,
     lineHeight: Float,
-    fontFamily: ReadingFontFamily,
+    fontFamily: ReadingFontFamily = ReadingFontFamily.SOLAIMAN_LIPI,
+    banglaFont: BanglaFontFamily = BanglaFontFamily.SOLAIMAN_LIPI,
+    arabicFont: ArabicFontFamily = ArabicFontFamily.AMIRI,
     textAlign: TextAlignOption,
     textColor: Color,
     ttsState: com.dynamicbookreader.utils.TtsPlaybackState,
     initialFraction: Float,
-    onPageChanged: (Float) -> Unit,
+    onPageProgressChanged: (fraction: Float, isScrolling: Boolean) -> Unit,
     onParagraphLongPress: (Int, String) -> Unit,
     onFootnoteClick: (String) -> Unit,
     onQuoteCardClick: (String, String) -> Unit,
@@ -268,10 +272,19 @@ fun PagedReadingContent(
     val initialPage = (initialFraction * (totalPages - 1)).toInt().coerceIn(0, totalPages - 1)
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { totalPages })
 
-    // Report reading fraction on page change + Haptic feedback
+    // Report reading fraction and scrolling state continuously
+    LaunchedEffect(pagerState, totalPages) {
+        snapshotFlow {
+            val frac = if (totalPages > 1) {
+                ((pagerState.currentPage + pagerState.currentPageOffsetFraction) / (totalPages - 1f)).coerceIn(0f, 1f)
+            } else 1f
+            frac to pagerState.isScrollInProgress
+        }.collect { (frac, isScrolling) ->
+            onPageProgressChanged(frac, isScrolling)
+        }
+    }
+
     LaunchedEffect(pagerState.currentPage) {
-        val fraction = if (totalPages > 1) pagerState.currentPage.toFloat() / (totalPages - 1) else 1f
-        onPageChanged(fraction)
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
@@ -349,7 +362,7 @@ fun PagedReadingContent(
                                 Text(
                                     text = "অধ্যায় ${chapter.chapterNo}",
                                     style = MaterialTheme.typography.labelLarge.copy(
-                                        fontFamily = fontFamily.fontFamily
+                                        fontFamily = banglaFont.fontFamily
                                     ),
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f)
@@ -362,7 +375,7 @@ fun PagedReadingContent(
                                         Text(
                                             text = "পাতা ${chapter.pageRange}",
                                             style = MaterialTheme.typography.labelMedium.copy(
-                                                fontFamily = fontFamily.fontFamily
+                                                fontFamily = banglaFont.fontFamily
                                             ),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -374,7 +387,7 @@ fun PagedReadingContent(
                             Text(
                                 text = chapter.title,
                                 style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontFamily = fontFamily.fontFamily,
+                                    fontFamily = banglaFont.fontFamily,
                                     fontSize = (fontSize + 4).sp,
                                     fontWeight = FontWeight.Bold,
                                     lineHeight = (fontSize + 14).sp,
@@ -396,7 +409,7 @@ fun PagedReadingContent(
                                 Text(
                                     text = chapter.title,
                                     style = MaterialTheme.typography.labelSmall.copy(
-                                        fontFamily = fontFamily.fontFamily
+                                        fontFamily = banglaFont.fontFamily
                                     ),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                     maxLines = 1,
@@ -404,7 +417,9 @@ fun PagedReadingContent(
                                 )
                                 Text(
                                     text = "পৃষ্ঠা ${pageIndex + 1} / $totalPages",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = banglaFont.fontFamily
+                                    ),
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -419,7 +434,7 @@ fun PagedReadingContent(
 
                             val baseStyle = if (isHeading) {
                                 MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = fontFamily.fontFamily,
+                                    fontFamily = banglaFont.fontFamily,
                                     fontSize = (fontSize + 1).sp,
                                     fontWeight = FontWeight.Bold,
                                     lineHeight = (fontSize * lineHeight).sp,
@@ -428,12 +443,33 @@ fun PagedReadingContent(
                                 )
                             } else {
                                 MaterialTheme.typography.bodyLarge.copy(
-                                    fontFamily = fontFamily.fontFamily,
+                                    fontFamily = banglaFont.fontFamily,
                                     fontSize = fontSize.sp,
                                     lineHeight = (fontSize * lineHeight).sp,
                                     color = textColor,
                                     textAlign = textAlign.align
                                 )
+                            }
+
+                            val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
+                            val footnoteColor = MaterialTheme.colorScheme.primary
+                            val annotated = remember(block, banglaFont, arabicFont, footnoteColor, fontSize) {
+                                if (hasFootnotes) {
+                                    BilingualTextHelper.buildContentBlockAnnotatedString(
+                                        segments = block.segments,
+                                        banglaFont = banglaFont.fontFamily,
+                                        arabicFont = arabicFont.fontFamily,
+                                        footnoteColor = footnoteColor,
+                                        fontSize = fontSize
+                                    )
+                                } else {
+                                    BilingualTextHelper.buildBilingualAnnotatedString(
+                                        text = block.plainText,
+                                        banglaFont = banglaFont.fontFamily,
+                                        arabicFont = arabicFont.fontFamily,
+                                        baseFontSizeSp = if (isHeading) fontSize + 1 else fontSize
+                                    )
+                                }
                             }
 
                             Box(
@@ -457,38 +493,12 @@ fun PagedReadingContent(
                                         )
                                     }
                             ) {
-                                val hasFootnotes = block.segments.any { it is ChapterContentParser.TextSegment.FootnoteRef }
                                 if (!hasFootnotes) {
                                     Text(
-                                        text = block.plainText,
+                                        text = annotated,
                                         style = baseStyle
                                     )
                                 } else {
-                                    val footnoteColor = MaterialTheme.colorScheme.primary
-                                    val annotated = remember(block, footnoteColor, fontSize) {
-                                        buildAnnotatedString {
-                                            block.segments.forEach { segment ->
-                                                when (segment) {
-                                                    is ChapterContentParser.TextSegment.Plain ->
-                                                        append(segment.text)
-                                                    is ChapterContentParser.TextSegment.FootnoteRef -> {
-                                                        pushStringAnnotation(tag = "footnote", annotation = segment.key)
-                                                        withStyle(
-                                                            SpanStyle(
-                                                                color = footnoteColor,
-                                                                fontWeight = FontWeight.Bold,
-                                                                baselineShift = BaselineShift.Superscript,
-                                                                fontSize = (fontSize * 0.7f).sp
-                                                            )
-                                                        ) {
-                                                            append("[${segment.displayNumber}]")
-                                                        }
-                                                        pop()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
                                     Text(
                                         text = annotated,
                                         style = baseStyle,

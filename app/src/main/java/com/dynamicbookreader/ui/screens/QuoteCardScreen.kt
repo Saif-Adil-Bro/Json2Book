@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dynamicbookreader.ui.theme.ReadingFontFamily
+import com.dynamicbookreader.ui.theme.SolaimanLipiFont
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dynamicbookreader.utils.QuoteImageExporter
 import com.dynamicbookreader.viewmodel.BookViewModel
@@ -136,7 +138,7 @@ fun QuoteCardScreen(
     var authorName by remember { mutableStateOf("") }
     var selectedBackground by remember { mutableStateOf(QuoteCardBackground.INDIGO_ROYAL) }
     var cardFontSize by remember { mutableFloatStateOf(18f) }
-    var selectedFontFamily by remember { mutableStateOf(FontFamily.Serif) }
+    var selectedFontFamily by remember { mutableStateOf(SolaimanLipiFont) }
     var selectedAspectRatio by remember { mutableStateOf(QuoteAspectRatio.AUTO) }
     var selectedBorderStyle by remember { mutableStateOf(QuoteBorderStyle.ORNAMENTAL) }
     var showQuoteIcon by remember { mutableStateOf(true) }
@@ -410,26 +412,24 @@ fun QuoteCardScreen(
                 modifier = Modifier.align(Alignment.Start)
             )
             Spacer(Modifier.height(8.dp))
-            Row(
+            androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterChip(
-                    selected = selectedFontFamily == FontFamily.Serif,
-                    onClick = { selectedFontFamily = FontFamily.Serif },
-                    label = { Text("সেরিফ (Serif)") }
-                )
-                FilterChip(
-                    selected = selectedFontFamily == FontFamily.SansSerif,
-                    onClick = { selectedFontFamily = FontFamily.SansSerif },
-                    label = { Text("স্যান্স (Sans)") }
-                )
-                FilterChip(
-                    selected = selectedFontFamily == FontFamily.Cursive,
-                    onClick = { selectedFontFamily = FontFamily.Cursive },
-                    label = { Text("আর্ট (Cursive)") }
-                )
+                items(ReadingFontFamily.entries.size) { index ->
+                    val family = ReadingFontFamily.entries[index]
+                    FilterChip(
+                        selected = selectedFontFamily == family.fontFamily,
+                        onClick = { selectedFontFamily = family.fontFamily },
+                        label = {
+                            Text(
+                                text = family.displayName,
+                                fontFamily = family.fontFamily
+                            )
+                        }
+                    )
+                }
             }
 
             Slider(

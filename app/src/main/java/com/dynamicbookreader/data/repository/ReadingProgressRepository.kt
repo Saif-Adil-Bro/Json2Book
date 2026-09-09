@@ -131,17 +131,25 @@ class ReadingProgressRepository(context: Context) {
      */
     suspend fun saveProgress(chapterNo: Int, chapterTitle: String, scrollFraction: Float) {
         val clamped = scrollFraction.coerceIn(0f, 1f)
+        val normalized = if (clamped >= 0.95f) 1.0f else clamped
         val now = System.currentTimeMillis()
         appContext.progressDataStore.edit { prefs ->
             // Single-slot "last read"
             prefs[KEY_CHAPTER_NO] = chapterNo
             prefs[KEY_CHAPTER_TITLE] = chapterTitle
-            prefs[KEY_SCROLL_FRACTION] = clamped
+            prefs[KEY_SCROLL_FRACTION] = normalized
             prefs[KEY_UPDATED_AT] = now
 
             // Per-chapter map
             val current = decodeMap(prefs[KEY_PER_CHAPTER_MAP]).toMutableMap()
-            current[chapterNo.toString()] = ChapterProgressEntry(clamped, now)
+            val existing = current[chapterNo.toString()]
+            // If already completed (>= 0.95f), preserve 1.0f unless new progress is also high
+            val finalFraction = when {
+                normalized >= 0.95f -> 1.0f
+                (existing?.scrollFraction ?: 0f) >= 0.99f && normalized < 0.95f -> 1.0f
+                else -> normalized
+            }
+            current[chapterNo.toString()] = ChapterProgressEntry(finalFraction, now)
             prefs[KEY_PER_CHAPTER_MAP] = json.encodeToString(
                 MapSerializer(String.serializer(), ChapterProgressEntry.serializer()),
                 current
