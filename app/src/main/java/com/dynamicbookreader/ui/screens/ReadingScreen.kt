@@ -572,6 +572,8 @@ private fun ReadingContent(
         }
     }
 
+    var textSelectionResetKey by remember { mutableIntStateOf(0) }
+
     PaperTextureBackground(
         readingTheme = readingTheme,
         paperTextureEnabled = paperTextureEnabled
@@ -620,6 +622,7 @@ private fun ReadingContent(
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
+                                textSelectionResetKey++
                                 if (!settingsPanelVisible) {
                                     controlsVisible = !controlsVisible
                                 }
@@ -635,8 +638,9 @@ private fun ReadingContent(
             ) {
                 // Header item
                 item(key = "header") {
-                    SelectionContainer {
-                        Column {
+                    key(textSelectionResetKey) {
+                        SelectionContainer {
+                            Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = "অধ্যায় ${chapter.chapterNo}",
@@ -718,8 +722,9 @@ private fun ReadingContent(
                             }
                         }
                     }
+                }
 
-                    // Collapsible ToC
+                // Collapsible ToC
                     if (hasToc) {
                         item(key = "toc_card") {
                             TocCard(
@@ -821,6 +826,7 @@ private fun ReadingContent(
                                                 selectedParagraphForAction = Pair(index, block.plainText)
                                             },
                                             onTap = {
+                                                textSelectionResetKey++
                                                 if (!settingsPanelVisible) {
                                                     controlsVisible = !controlsVisible
                                                 }
@@ -828,26 +834,29 @@ private fun ReadingContent(
                                         )
                                     }
                             ) {
-                                SelectionContainer {
-                                    if (!hasFootnotes) {
-                                        Text(
-                                            text = annotated,
-                                            style = baseStyle
-                                        )
-                                    } else {
-                                        FootnoteAwareText(
-                                            text = annotated,
-                                            style = baseStyle,
-                                            onFootnoteClick = { key ->
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                selectedFootnoteKey = key
-                                            },
-                                            onNonFootnoteClick = {
-                                                if (!settingsPanelVisible) {
-                                                    controlsVisible = !controlsVisible
+                                key(textSelectionResetKey) {
+                                    SelectionContainer {
+                                        if (!hasFootnotes) {
+                                            Text(
+                                                text = annotated,
+                                                style = baseStyle
+                                            )
+                                        } else {
+                                            FootnoteAwareText(
+                                                text = annotated,
+                                                style = baseStyle,
+                                                onFootnoteClick = { key ->
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    selectedFootnoteKey = key
+                                                },
+                                                onNonFootnoteClick = {
+                                                    textSelectionResetKey++
+                                                    if (!settingsPanelVisible) {
+                                                        controlsVisible = !controlsVisible
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
                             }

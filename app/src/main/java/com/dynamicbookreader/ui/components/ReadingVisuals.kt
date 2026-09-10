@@ -272,6 +272,7 @@ fun PagedReadingContent(
     val totalPages = pages.size
     val initialPage = (initialFraction * (totalPages - 1)).toInt().coerceIn(0, totalPages - 1)
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { totalPages })
+    var selectionResetKey by remember { mutableIntStateOf(0) }
 
     // Report reading fraction and scrolling state continuously
     LaunchedEffect(pagerState, totalPages) {
@@ -297,6 +298,7 @@ fun PagedReadingContent(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { offset ->
+                            selectionResetKey++
                             val width = size.width
                             when {
                                 // Tap left 20% -> previous page
@@ -490,25 +492,35 @@ fun PagedReadingContent(
                                             onDoubleTap = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 onParagraphLongPress(globalIndex, block.plainText)
+                                            },
+                                            onTap = {
+                                                selectionResetKey++
+                                                onToggleControls()
                                             }
                                         )
                                     }
                             ) {
-                                SelectionContainer {
-                                    if (!hasFootnotes) {
-                                        Text(
-                                            text = annotated,
-                                            style = baseStyle
-                                        )
-                                    } else {
-                                        FootnoteAwareText(
-                                            text = annotated,
-                                            style = baseStyle,
-                                            onFootnoteClick = { key ->
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                onFootnoteClick(key)
-                                            }
-                                        )
+                                key(selectionResetKey) {
+                                    SelectionContainer {
+                                        if (!hasFootnotes) {
+                                            Text(
+                                                text = annotated,
+                                                style = baseStyle
+                                            )
+                                        } else {
+                                            FootnoteAwareText(
+                                                text = annotated,
+                                                style = baseStyle,
+                                                onFootnoteClick = { key ->
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    onFootnoteClick(key)
+                                                },
+                                                onNonFootnoteClick = {
+                                                    selectionResetKey++
+                                                    onToggleControls()
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
