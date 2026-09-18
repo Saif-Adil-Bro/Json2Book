@@ -578,9 +578,12 @@ private fun QuoteCardViewContent(
                             .border(1.2.dp, bgTheme.accentColor.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        StylizedQuoteIcon(
-                            modifier = Modifier.size(24.dp),
-                            tint = bgTheme.accentColor
+                        Text(
+                            text = "❝",
+                            color = bgTheme.accentColor,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
                         )
                     }
                     Spacer(Modifier.height(14.dp))
@@ -668,62 +671,6 @@ private fun QuoteCardViewContent(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * Renders an ornamental opening double quotation mark (❝) icon with graceful curves
- * and perfect centering, replacing plain ASCII quotation characters.
- */
-@Composable
-private fun StylizedQuoteIcon(
-    modifier: Modifier = Modifier,
-    tint: Color
-) {
-    androidx.compose.foundation.Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val scale = minOf(w, h) / 100f
-        val offsetX = (w - 100f * scale) / 2f
-        val offsetY = (h - 100f * scale) / 2f
-
-        // Draw opening double quotation marks: ❝
-        val centers = floatArrayOf(33f, 67f)
-        for (cx in centers) {
-            val path = Path().apply {
-                val cy = 35f
-                val r = 13.5f
-
-                // Start at top of the circular bulb head
-                moveTo(cx * scale + offsetX, (cy - r) * scale + offsetY)
-                // Top-right arc to right edge
-                cubicTo(
-                    (cx + r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
-                    (cx + r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
-                    (cx + r) * scale + offsetX, cy * scale + offsetY
-                )
-                // Outer sweep curving downwards and tapering towards bottom-left tip
-                cubicTo(
-                    (cx + r) * scale + offsetX, (cy + 15f) * scale + offsetY,
-                    (cx + 2f) * scale + offsetX, (cy + 28f) * scale + offsetY,
-                    (cx - 15f) * scale + offsetX, (cy + 34f) * scale + offsetY
-                )
-                // Inner returning curve from tip to bottom-left of bulb
-                cubicTo(
-                    (cx - 5f) * scale + offsetX, (cy + 22f) * scale + offsetY,
-                    (cx - r) * scale + offsetX, (cy + 12f) * scale + offsetY,
-                    (cx - r) * scale + offsetX, cy * scale + offsetY
-                )
-                // Top-left arc back to top
-                cubicTo(
-                    (cx - r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
-                    (cx - r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
-                    cx * scale + offsetX, (cy - r) * scale + offsetY
-                )
-                close()
-            }
-            drawPath(path = path, color = tint)
         }
     }
 }
