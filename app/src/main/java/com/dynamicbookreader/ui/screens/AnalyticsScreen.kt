@@ -286,43 +286,67 @@ fun AnalyticsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp),
+                            .height(130.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
                         days.forEach { day ->
                             val mins = analytics.weeklyMinutesMap[day] ?: 0
-                            val heightFraction = (mins.toFloat() / maxMinutes.toFloat()).coerceIn(0.08f, 1f)
-                            
+                            val heightFraction = if (maxMinutes > 0) {
+                                (mins.toFloat() / maxMinutes.toFloat()).coerceIn(0.06f, 1f)
+                            } else 0.06f
+
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Bottom,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
                             ) {
-                                if (mins > 0) {
-                                    Text(
-                                        text = "$mins",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                // Top reading minutes indicator
+                                Box(
+                                    modifier = Modifier.height(18.dp),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    if (mins > 0) {
+                                        Text(
+                                            text = "$mins",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (mins >= analytics.dailyGoalMinutes) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
+
                                 Spacer(Modifier.height(4.dp))
+
+                                // Bounded Bar Container (guarantees bar never exceeds its allocated area)
                                 Box(
                                     modifier = Modifier
-                                        .width(16.dp)
-                                        .fillMaxHeight(heightFraction)
-                                        .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                                        .background(
-                                            if (mins >= analytics.dailyGoalMinutes) Color(0xFF4CAF50)
-                                            else if (mins > 0) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.surfaceVariant
-                                        )
-                                )
-                                Spacer(Modifier.height(6.dp))
+                                        .weight(1f)
+                                        .fillMaxWidth(),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(18.dp)
+                                            .fillMaxHeight(heightFraction)
+                                            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                                            .background(
+                                                if (mins >= analytics.dailyGoalMinutes) Color(0xFF4CAF50)
+                                                else if (mins > 0) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                    )
+                                }
+
+                                Spacer(Modifier.height(8.dp))
+
+                                // Day Label
                                 Text(
                                     text = day,
                                     style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }

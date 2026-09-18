@@ -34,9 +34,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dynamicbookreader.ui.theme.ArabicFontFamily
+import com.dynamicbookreader.ui.theme.BanglaFontFamily
 import com.dynamicbookreader.ui.theme.ReadingFontFamily
 import com.dynamicbookreader.ui.theme.SolaimanLipiFont
 import androidx.compose.ui.viewinterop.AndroidView
+import com.dynamicbookreader.utils.BilingualTextHelper
 import com.dynamicbookreader.utils.QuoteImageExporter
 import com.dynamicbookreader.viewmodel.BookViewModel
 import kotlinx.coroutines.launch
@@ -139,7 +142,8 @@ fun QuoteCardScreen(
     var authorName by remember { mutableStateOf("") }
     var selectedBackground by remember { mutableStateOf(QuoteCardBackground.INDIGO_ROYAL) }
     var cardFontSize by remember { mutableFloatStateOf(18f) }
-    var selectedFontFamily by remember { mutableStateOf(SolaimanLipiFont) }
+    var selectedBanglaFont by remember { mutableStateOf(BanglaFontFamily.SOLAIMAN_LIPI) }
+    var selectedArabicFont by remember { mutableStateOf(ArabicFontFamily.AMIRI) }
     var selectedAspectRatio by remember { mutableStateOf(QuoteAspectRatio.AUTO) }
     var selectedBorderStyle by remember { mutableStateOf(QuoteBorderStyle.ORNAMENTAL) }
     var showQuoteIcon by remember { mutableStateOf(true) }
@@ -216,7 +220,8 @@ fun QuoteCardScreen(
                                     authorName = authorName,
                                     bgTheme = selectedBackground,
                                     fontSize = cardFontSize,
-                                    fontFamily = selectedFontFamily,
+                                    banglaFont = selectedBanglaFont,
+                                    arabicFont = selectedArabicFont,
                                     aspectRatio = selectedAspectRatio,
                                     borderStyle = selectedBorderStyle,
                                     showQuoteIcon = showQuoteIcon,
@@ -233,7 +238,8 @@ fun QuoteCardScreen(
                                 authorName = authorName,
                                 bgTheme = selectedBackground,
                                 fontSize = cardFontSize,
-                                fontFamily = selectedFontFamily,
+                                banglaFont = selectedBanglaFont,
+                                arabicFont = selectedArabicFont,
                                 aspectRatio = selectedAspectRatio,
                                 borderStyle = selectedBorderStyle,
                                 showQuoteIcon = showQuoteIcon,
@@ -405,9 +411,9 @@ fun QuoteCardScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Font Size & Typography controls
+            // Bangla Font Selection
             Text(
-                text = "ফন্ট শৈলী ও সাইজ (${cardFontSize.toInt()}sp)",
+                text = "বাংলা ফন্ট শৈলী",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Start)
@@ -418,11 +424,11 @@ fun QuoteCardScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(ReadingFontFamily.entries.size) { index ->
-                    val family = ReadingFontFamily.entries[index]
+                items(BanglaFontFamily.entries.size) { index ->
+                    val family = BanglaFontFamily.entries[index]
                     FilterChip(
-                        selected = selectedFontFamily == family.fontFamily,
-                        onClick = { selectedFontFamily = family.fontFamily },
+                        selected = selectedBanglaFont == family,
+                        onClick = { selectedBanglaFont = family },
                         label = {
                             Text(
                                 text = family.displayName,
@@ -433,6 +439,44 @@ fun QuoteCardScreen(
                 }
             }
 
+            Spacer(Modifier.height(14.dp))
+
+            // Arabic Font Selection
+            Text(
+                text = "আরবি ফন্ট শৈলী",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ArabicFontFamily.entries.forEach { family ->
+                    FilterChip(
+                        selected = selectedArabicFont == family,
+                        onClick = { selectedArabicFont = family },
+                        label = {
+                            Text(
+                                text = family.displayName,
+                                fontFamily = family.fontFamily
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // Font Size & Typography controls
+            Text(
+                text = "ফন্ট সাইজ (${cardFontSize.toInt()}sp)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Start)
+            )
             Slider(
                 value = cardFontSize,
                 onValueChange = { cardFontSize = it },
@@ -448,7 +492,7 @@ fun QuoteCardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("উদ্ধৃতি আইকন (❞) দেখান", modifier = Modifier.weight(1f))
+                Text("উদ্ধৃতি আইকন (❝) দেখান", modifier = Modifier.weight(1f))
                 Switch(checked = showQuoteIcon, onCheckedChange = { showQuoteIcon = it })
             }
             Row(
@@ -471,7 +515,8 @@ private fun QuoteCardViewContent(
     authorName: String,
     bgTheme: QuoteCardBackground,
     fontSize: Float,
-    fontFamily: FontFamily,
+    banglaFont: BanglaFontFamily,
+    arabicFont: ArabicFontFamily,
     aspectRatio: QuoteAspectRatio,
     borderStyle: QuoteBorderStyle,
     showQuoteIcon: Boolean,
@@ -530,7 +575,7 @@ private fun QuoteCardViewContent(
                             .size(46.dp)
                             .clip(CircleShape)
                             .background(bgTheme.accentColor.copy(alpha = 0.18f))
-                            .border(1.dp, bgTheme.accentColor.copy(alpha = 0.35f), CircleShape),
+                            .border(1.2.dp, bgTheme.accentColor.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         StylizedQuoteIcon(
@@ -541,11 +586,21 @@ private fun QuoteCardViewContent(
                     Spacer(Modifier.height(14.dp))
                 }
 
+                val formattedQuote = remember(quoteText, banglaFont, arabicFont, fontSize) {
+                    BilingualTextHelper.buildBilingualAnnotatedString(
+                        text = quoteText,
+                        banglaFont = banglaFont.fontFamily,
+                        arabicFont = arabicFont.fontFamily,
+                        baseFontSizeSp = fontSize,
+                        arabicScaleMultiplier = 1.15f
+                    )
+                }
+
                 Text(
-                    text = quoteText,
+                    text = formattedQuote,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = fontSize.sp,
-                        fontFamily = fontFamily,
+                        fontFamily = banglaFont.fontFamily,
                         fontWeight = FontWeight.Medium,
                         lineHeight = (fontSize * 1.55f).sp,
                         textAlign = TextAlign.Center
@@ -566,19 +621,38 @@ private fun QuoteCardViewContent(
                 Spacer(Modifier.height(12.dp))
 
                 // Author & Book metadata badge
+                val authorDisplay = if (authorName.isNotBlank()) "— $authorName" else "— বিশিষ্ট চিন্তক"
+                val formattedAuthor = remember(authorDisplay, banglaFont, arabicFont) {
+                    BilingualTextHelper.buildBilingualAnnotatedString(
+                        text = authorDisplay,
+                        banglaFont = banglaFont.fontFamily,
+                        arabicFont = arabicFont.fontFamily
+                    )
+                }
+
                 Text(
-                    text = if (authorName.isNotBlank()) "— $authorName" else "— বিশিষ্ট চিন্তক",
+                    text = formattedAuthor,
                     style = MaterialTheme.typography.titleSmall.copy(
-                        fontFamily = fontFamily,
+                        fontFamily = banglaFont.fontFamily,
                         fontWeight = FontWeight.SemiBold
                     ),
                     color = bgTheme.secondaryColor
                 )
 
                 if (bookTitle.isNotBlank()) {
+                    val titleDisplay = "📖 $bookTitle"
+                    val formattedTitle = remember(titleDisplay, banglaFont, arabicFont) {
+                        BilingualTextHelper.buildBilingualAnnotatedString(
+                            text = titleDisplay,
+                            banglaFont = banglaFont.fontFamily,
+                            arabicFont = arabicFont.fontFamily
+                        )
+                    }
                     Text(
-                        text = "📖 $bookTitle",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = formattedTitle,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = banglaFont.fontFamily
+                        ),
                         color = bgTheme.secondaryColor.copy(alpha = 0.8f),
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -599,7 +673,7 @@ private fun QuoteCardViewContent(
 }
 
 /**
- * Renders an ornamental double comma quotation mark (❞) icon with smooth curves
+ * Renders an ornamental opening double quotation mark (❝) icon with graceful curves
  * and perfect centering, replacing plain ASCII quotation characters.
  */
 @Composable
@@ -614,37 +688,38 @@ private fun StylizedQuoteIcon(
         val offsetX = (w - 100f * scale) / 2f
         val offsetY = (h - 100f * scale) / 2f
 
-        // Draw double comma quotation marks: ❞
-        val centers = floatArrayOf(32f, 68f)
+        // Draw opening double quotation marks: ❝
+        val centers = floatArrayOf(33f, 67f)
         for (cx in centers) {
             val path = Path().apply {
-                val cy = 38f
-                val r = 14.5f
+                val cy = 35f
+                val r = 13.5f
 
-                // Start at left-most edge of the circular head
-                moveTo((cx - r) * scale + offsetX, cy * scale + offsetY)
-                // Top half circle via cubic bezier to right-most edge
-                cubicTo(
-                    (cx - r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
-                    (cx - r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
-                    cx * scale + offsetX, (cy - r) * scale + offsetY
-                )
+                // Start at top of the circular bulb head
+                moveTo(cx * scale + offsetX, (cy - r) * scale + offsetY)
+                // Top-right arc to right edge
                 cubicTo(
                     (cx + r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
                     (cx + r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
                     (cx + r) * scale + offsetX, cy * scale + offsetY
                 )
-                // Graceful sweeping outer curve down to the pointed tip
+                // Outer sweep curving downwards and tapering towards bottom-left tip
                 cubicTo(
-                    (cx + r) * scale + offsetX, (cy + 18f) * scale + offsetY,
-                    (cx + 4f) * scale + offsetX, (cy + 32f) * scale + offsetY,
-                    (cx - 14f) * scale + offsetX, (cy + 36f) * scale + offsetY
+                    (cx + r) * scale + offsetX, (cy + 15f) * scale + offsetY,
+                    (cx + 2f) * scale + offsetX, (cy + 28f) * scale + offsetY,
+                    (cx - 15f) * scale + offsetX, (cy + 34f) * scale + offsetY
                 )
-                // Inner curve returning from tip back to the left of the head
+                // Inner returning curve from tip to bottom-left of bulb
                 cubicTo(
-                    (cx - 8f) * scale + offsetX, (cy + 26f) * scale + offsetY,
-                    (cx - r) * scale + offsetX, (cy + 14f) * scale + offsetY,
+                    (cx - 5f) * scale + offsetX, (cy + 22f) * scale + offsetY,
+                    (cx - r) * scale + offsetX, (cy + 12f) * scale + offsetY,
                     (cx - r) * scale + offsetX, cy * scale + offsetY
+                )
+                // Top-left arc back to top
+                cubicTo(
+                    (cx - r) * scale + offsetX, (cy - r * 0.552f) * scale + offsetY,
+                    (cx - r * 0.552f) * scale + offsetX, (cy - r) * scale + offsetY,
+                    cx * scale + offsetX, (cy - r) * scale + offsetY
                 )
                 close()
             }
